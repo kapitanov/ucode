@@ -10,9 +10,9 @@ import (
 )
 
 const (
-	DefaultModelName         = "anthropic/claude-opus-4.5"
-	DefaultMaxMessages       = 50
-	DefaultCompactedMessages = 20
+	DefaultModelName         = "anthropic/claude-haiku-4.5"
+	DefaultMaxMessages       = 100
+	DefaultCompactedMessages = 25
 )
 
 var (
