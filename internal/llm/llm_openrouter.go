@@ -22,6 +22,8 @@ func NewOpenRouterClient(apiURL, apiKey string) *OpenRouterClient {
 	}
 }
 
+func (*OpenRouterClient) Type() string { return "openrouter" }
+
 func (c *OpenRouterClient) CreateChatCompletion(ctx context.Context, req openrouter.ChatCompletionRequest) (*openrouter.ChatCompletionResponse, error) {
 	resp, err := c.client.CreateChatCompletion(ctx, req)
 	if err != nil {

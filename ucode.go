@@ -1,22 +1,16 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"log"
 	"os"
-	"strings"
-	"time"
 
-	"github.com/briandowns/spinner"
-	"github.com/charmbracelet/glamour"
-	"github.com/charmbracelet/glamour/styles"
-	"github.com/fatih/color"
 	"github.com/joho/godotenv"
 	"github.com/kapitanov/ucode/internal/agent"
 	"github.com/kapitanov/ucode/internal/llm"
 	"github.com/kapitanov/ucode/internal/tools"
+	"github.com/kapitanov/ucode/internal/tui"
 )
 
 var (
@@ -107,20 +101,15 @@ func createLLM() (agent.LLMClient, error) {
 }
 
 func runAgent(a *agent.Agent) {
-	scanner := bufio.NewScanner(os.Stdin)
+	tui.Info(fmt.Sprintf("Using model: %s (%s)", a.Model, a.ProviderType))
+
+	reader := tui.NewReader()
 
 	for {
-		printCursor()
-
-		if !scanner.Scan() {
-			if err := scanner.Err(); err != nil {
-				log.Printf("Error reading input: %v", err)
-			}
+		str, ok := reader.Next()
+		if !ok {
 			return
 		}
-
-		str := scanner.Text()
-		str = strings.TrimSpace(str)
 
 		switch str {
 		case "":
@@ -134,60 +123,38 @@ func runAgent(a *agent.Agent) {
 }
 
 func runAgentLoop(a *agent.Agent, str string) {
-	s := spinner.New(spinner.CharSets[57], 100*time.Millisecond)
-	s.Start()
-	defer s.Stop()
-
-	ch := a.Run(str)
-	for msg := range ch {
-		s.Stop()
-		printMsg(msg)
-		s.Start()
-	}
-}
-
-var (
-	cursorStyle     = color.New(color.FgHiGreen, color.Bold).SprintFunc()
-	reasoningStyle  = color.New(color.FgHiCyan).SprintFunc()
-	toolStyle       = color.New(color.FgHiYellow, color.Faint).SprintFunc()
-	errorStyle      = color.New(color.FgHiRed).SprintFunc()
-	compactionStyle = color.New(color.FgHiMagenta, color.Faint).SprintFunc()
-)
-
-func printCursor() {
-	_, _ = fmt.Fprintf(color.Output, "%s ", cursorStyle(">"))
+	tui.WithSpinner(func(spinner tui.Spinner) {
+		ch := a.Run(str)
+		for msg := range ch {
+			spinner.Pause(func() { printMsg(msg) })
+		}
+	})
 }
 
 func printMsg(e agent.Event) {
 	if e.Message != nil && e.Message.Text != "" {
-		outputText, err := glamour.Render(e.Message.Text, styles.DarkStyle)
-		if err != nil {
-			outputText = fmt.Sprintf("%s %s\n", cursorStyle("<"), e.Message.Text)
-		}
-
-		_, _ = fmt.Fprint(color.Output, outputText)
+		tui.Message(e.Message.Text)
 	}
 
 	if e.Reasoning != nil {
-		_, _ = fmt.Fprintf(color.Output, "%s\n", reasoningStyle(e.Reasoning.Text))
+		tui.Reasoning(e.Reasoning.Text)
 	}
 
 	if e.ToolCall != nil {
-		toolName := tools.Describe(e.ToolCall.Name, e.ToolCall.Args)
-		_, _ = fmt.Fprintf(color.Output, "%s\n", toolStyle(toolName))
+		tui.ToolCall(e.ToolCall.Name, e.ToolCall.Args)
 	}
 
 	if e.ToolResponse != nil {
 		if e.ToolResponse.Error != "" {
-			_, _ = fmt.Fprintf(color.Output, "  %s\n", errorStyle(e.ToolResponse.Error))
+			tui.ToolCallError(e.ToolResponse.Error)
 		}
 	}
 
 	if e.Compaction != nil {
-		_, _ = fmt.Fprintf(color.Output, "%s\n", compactionStyle(fmt.Sprintf("[compaction: %d -> %d messages]", e.Compaction.Before, e.Compaction.After)))
+		tui.Compaction(e.Compaction.Before, e.Compaction.After)
 	}
 
 	if e.Error != nil {
-		_, _ = fmt.Fprintf(color.Output, "%s\n", errorStyle(e.Error.Error()))
+		tui.Error(e.Error.Error())
 	}
 }

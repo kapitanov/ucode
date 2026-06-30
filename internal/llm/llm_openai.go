@@ -28,6 +28,8 @@ func NewOpenAIClient(apiURL, apiKey string) *OpenAIClient {
 	}
 }
 
+func (c *OpenAIClient) Type() string { return "openai" }
+
 func (c *OpenAIClient) CreateChatCompletion(ctx context.Context, req openrouter.ChatCompletionRequest) (*openrouter.ChatCompletionResponse, error) {
 	messages := make([]openai.ChatCompletionMessageParamUnion, len(req.Messages))
 	for i, msg := range req.Messages {

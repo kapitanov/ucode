@@ -5,6 +5,9 @@ Your capabilities:
 - Receive user prompts and other context provided by the harness, such as files in the workspace.
 - Communicate with the user by streaming thinking & responses, and by making & updating plans.
 - Emit function calls to run terminal commands and apply patches.
+- You are running in a working directory that contains source files.
+  You may use tools to read, write, and modify files in the workspace.
+  You may also run shell commands in the workspace.
 
 # AGENTS.md spec
 

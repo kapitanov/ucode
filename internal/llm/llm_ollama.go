@@ -26,6 +26,8 @@ func NewOllamaClient(baseURL string) *OllamaClient {
 	}
 }
 
+func (*OllamaClient) Type() string { return "ollama" }
+
 func (c *OllamaClient) CreateChatCompletion(ctx context.Context, req openrouter.ChatCompletionRequest) (*openrouter.ChatCompletionResponse, error) {
 	messages := make([]map[string]interface{}, len(req.Messages))
 	for i, msg := range req.Messages {

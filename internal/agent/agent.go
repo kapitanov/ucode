@@ -22,6 +22,9 @@ var (
 )
 
 type Agent struct {
+	Model        string
+	ProviderType string
+
 	client            LLMClient
 	request           openrouter.ChatCompletionRequest
 	maxMessages       int
@@ -36,6 +39,7 @@ type Parameters struct {
 }
 
 type LLMClient interface {
+	Type() string
 	CreateChatCompletion(ctx context.Context, req openrouter.ChatCompletionRequest) (*openrouter.ChatCompletionResponse, error)
 }
 
@@ -59,6 +63,8 @@ func New(p Parameters) *Agent {
 	}
 
 	return &Agent{
+		Model:             p.ModelName,
+		ProviderType:      p.LLM.Type(),
 		client:            p.LLM,
 		request:           request,
 		maxMessages:       maxMessages,
