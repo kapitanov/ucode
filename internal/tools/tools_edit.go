@@ -61,7 +61,10 @@ func editTool(args editToolArgs) (editToolResult, error) {
 	oldContent := string(bs)
 	var newContent string
 	if args.OldStr == "" {
-		newContent = oldContent + args.NewStr
+		if oldContent != "" {
+			return editToolResult{}, fmt.Errorf("old_str is empty but file already has content; use exact string to replace")
+		}
+		newContent = args.NewStr
 	} else {
 		// Count occurrences first to ensure we have exactly one match
 		count := strings.Count(oldContent, args.OldStr)

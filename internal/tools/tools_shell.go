@@ -32,7 +32,7 @@ func shellTool(args shellToolArgs) (shellToolResult, error) {
 			}, nil
 		}
 
-		return shellToolResult{}, fmt.Errorf("Command failed with error: %s\nOutput: %s", err.Error(), string(output))
+		return shellToolResult{}, fmt.Errorf("command failed with error: %s\nOutput: %s", err.Error(), string(output))
 	}
 
 	return shellToolResult{

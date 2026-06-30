@@ -67,11 +67,15 @@ func codeSearchTool(args codeSearchToolArgs) (codeSearchToolResult, error) {
 	}
 
 	result := strings.TrimSpace(string(output))
+	if result == "" {
+		return codeSearchToolResult{Result: ""}, nil
+	}
+
 	lines := strings.Split(result, "\n")
 
 	// Limit output to prevent overwhelming responses
 	if len(lines) > 50 {
-		result = strings.Join(lines[:50], "\n") + fmt.Sprintf("\n... (showing first 50 of %d matches)", len(lines))
+		result = strings.Join(lines[:50], "\n") + fmt.Sprintf("\n... (showing first 50 of %d lines)", len(lines))
 	}
 
 	return codeSearchToolResult{Result: result}, nil

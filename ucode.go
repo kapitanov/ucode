@@ -15,54 +15,95 @@ import (
 	"github.com/fatih/color"
 	"github.com/joho/godotenv"
 	"github.com/kapitanov/ucode/internal/agent"
+	"github.com/kapitanov/ucode/internal/llm"
 	"github.com/kapitanov/ucode/internal/tools"
 )
 
 var (
-	apiKey, modelName      string
-	maxMessages, compacted int
+	providerType, providerURL, providerAPIKey string
+	modelName                                 string
+	maxMessages, compacted                    int
 )
 
 func init() {
-	flag.StringVar(&apiKey, "api-key", "", "openrouter api key (defaults to $OPENROUTER_API_KEY)")
-	flag.StringVar(&modelName, "model-name", "", fmt.Sprintf("openrouter model name (defaults to $OPENROUTER_MODEL or %s)", agent.DefaultModelName))
+	flag.StringVar(&providerType, "provider", "", "llm provider type (defaults to $LLM_PROVIDER_TYPE)")
+	flag.StringVar(&providerURL, "url", "", "llm provider URL (defaults to $LLM_PROVIDER_URL)")
+	flag.StringVar(&providerAPIKey, "key", "", "llm provider api key (defaults to $LLM_PROVIDER_API_KEY)")
+
+	flag.StringVar(&modelName, "model", "", fmt.Sprintf("model name (defaults to $OPENROUTER_MODEL or %s)", agent.DefaultModelName))
 	flag.IntVar(&maxMessages, "max-messages", agent.DefaultMaxMessages, "max messages before compaction")
 	flag.IntVar(&compacted, "compacted-messages", agent.DefaultCompactedMessages, "messages to keep after compaction")
 
-	godotenv.Load()
+	_ = godotenv.Load()
 }
 
 func main() {
 	flag.Parse()
 
-	if apiKey == "" {
-		apiKey = os.Getenv("OPENROUTER_API_KEY")
-	}
 	if modelName == "" {
 		modelName = os.Getenv("OPENROUTER_MODEL")
 	}
 	if modelName == "" {
 		modelName = agent.DefaultModelName
 	}
-
-	if apiKey == "" {
-		log.Fatal("missing openrouter api key")
-	}
 	if modelName == "" {
-		log.Fatal("missing openrouter model name")
+		log.Fatal("missing model name (set --model-name or $OPENROUTER_MODEL)")
 	}
 
 	if err := tools.CheckDependencies(); err != nil {
 		log.Fatal(err)
 	}
 
+	llmClient, err := createLLM()
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	a := agent.New(agent.Parameters{
-		APIKey:            apiKey,
+		LLM:               llmClient,
 		ModelName:         modelName,
 		MaxMessages:       maxMessages,
 		CompactedMessages: compacted,
 	})
 	runAgent(a)
+}
+
+func createLLM() (agent.LLMClient, error) {
+	switch providerType {
+	case "openrouter":
+		if providerURL == "" {
+			providerURL = os.Getenv("OPENROUTER_API_URL")
+		}
+		if providerAPIKey == "" {
+			providerAPIKey = os.Getenv("OPENROUTER_API_KEY")
+		}
+		if providerAPIKey == "" {
+			return nil, fmt.Errorf("missing openrouter api key (set --key or $OPENROUTER_API_KEY)")
+		}
+
+		return llm.NewOpenRouterClient(providerURL, providerAPIKey), nil
+
+	case "ollama":
+		if providerURL == "" {
+			providerURL = os.Getenv("OLLAMA_URL")
+		}
+		return llm.NewOllamaClient(providerURL), nil
+
+	case "openai":
+		if providerURL == "" {
+			providerURL = os.Getenv("OPENAI_API_URL")
+		}
+		if providerAPIKey == "" {
+			providerAPIKey = os.Getenv("OPENAI_API_KEY")
+		}
+		if providerAPIKey == "" {
+			return nil, fmt.Errorf("missing openai api key (set --key or $OPENAI_API_KEY)")
+		}
+		return llm.NewOpenAIClient(providerURL, providerAPIKey), nil
+
+	default:
+		return nil, fmt.Errorf("%q is not a valid provider", providerType)
+	}
 }
 
 func runAgent(a *agent.Agent) {
@@ -72,6 +113,9 @@ func runAgent(a *agent.Agent) {
 		printCursor()
 
 		if !scanner.Scan() {
+			if err := scanner.Err(); err != nil {
+				log.Printf("Error reading input: %v", err)
+			}
 			return
 		}
 

@@ -121,8 +121,11 @@ func normalizePath(path string) (string, error) {
 		return "", err
 	}
 
-	if normalizedPath != wd && !strings.HasPrefix(normalizedPath, wd+string(filepath.Separator)) {
-		return "", fmt.Errorf("directory %q is outside of the working directory", path)
+	// Check if normalizedPath is within wd (allow exact match or subdirectories)
+	if normalizedPath != wd {
+		if !strings.HasPrefix(normalizedPath, wd+string(filepath.Separator)) {
+			return "", fmt.Errorf("directory %q is outside of the working directory", path)
+		}
 	}
 
 	return normalizedPath, nil

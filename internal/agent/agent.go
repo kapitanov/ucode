@@ -4,6 +4,7 @@ import (
 	"context"
 	_ "embed"
 	"fmt"
+	"time"
 
 	"github.com/kapitanov/ucode/internal/tools"
 	"github.com/revrost/go-openrouter"
@@ -21,17 +22,21 @@ var (
 )
 
 type Agent struct {
-	client            *openrouter.Client
+	client            LLMClient
 	request           openrouter.ChatCompletionRequest
 	maxMessages       int
 	compactedMessages int
 }
 
 type Parameters struct {
-	APIKey            string
+	LLM               LLMClient
 	ModelName         string
 	MaxMessages       int
 	CompactedMessages int
+}
+
+type LLMClient interface {
+	CreateChatCompletion(ctx context.Context, req openrouter.ChatCompletionRequest) (*openrouter.ChatCompletionResponse, error)
 }
 
 func New(p Parameters) *Agent {
@@ -39,9 +44,6 @@ func New(p Parameters) *Agent {
 		Model: p.ModelName,
 		Messages: []openrouter.ChatCompletionMessage{
 			openrouter.SystemMessage(prompt),
-		},
-		Reasoning: &openrouter.ChatCompletionReasoning{
-			Enabled: new(false),
 		},
 		Tools: tools.Definitions(),
 	}
@@ -57,7 +59,7 @@ func New(p Parameters) *Agent {
 	}
 
 	return &Agent{
-		client:            openrouter.NewClient(p.APIKey),
+		client:            p.LLM,
 		request:           request,
 		maxMessages:       maxMessages,
 		compactedMessages: compactedMessages,
@@ -95,10 +97,15 @@ type ToolResponse struct {
 }
 
 func (a *Agent) Run(str string) <-chan Event {
-	ch := make(chan Event)
+	ch := make(chan Event, 10)
 
 	go func() {
-		defer close(ch)
+		defer func() {
+			if r := recover(); r != nil {
+				fmt.Printf("agent panic: %v\n", r)
+			}
+			close(ch)
+		}()
 		a.run(str, ch)
 	}()
 
@@ -129,7 +136,17 @@ func (a *Agent) compactMessages() *Compaction {
 
 	cutIndex := a.findSafeCutIndex()
 	if cutIndex <= 1 || cutIndex >= len(a.request.Messages) {
-		return nil
+		// No safe cut point found; force-compact by keeping the last compactedMessages entries
+		// to prevent unbounded memory growth.
+		keep := a.compactedMessages
+		if keep >= len(a.request.Messages) {
+			keep = len(a.request.Messages) - 1
+		}
+		recentMessages := a.request.Messages[len(a.request.Messages)-keep:]
+		a.request.Messages = make([]openrouter.ChatCompletionMessage, 0, len(recentMessages)+1)
+		a.request.Messages = append(a.request.Messages, systemMsg)
+		a.request.Messages = append(a.request.Messages, recentMessages...)
+		return &Compaction{Before: before, After: len(a.request.Messages)}
 	}
 
 	recentMessages := a.request.Messages[cutIndex:]
@@ -161,11 +178,7 @@ func (a *Agent) findSafeCutIndex() int {
 		}
 	}
 
-	return a.findFirstSafeCutIndex()
-}
-
-func (a *Agent) findFirstSafeCutIndex() int {
-	for i := 2; i < len(a.request.Messages); i++ {
+	for i := 2; i < len(messages); i++ {
 		if a.isSafeCutPoint(i) {
 			return i
 		}
@@ -196,7 +209,10 @@ func (a *Agent) runSingleOperation(ch chan<- Event) (bool, error) {
 		ch <- Event{Compaction: compaction}
 	}
 
-	response, err := a.client.CreateChatCompletion(context.Background(), a.request)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	defer cancel()
+
+	response, err := a.client.CreateChatCompletion(ctx, a.request)
 	if err != nil {
 		return false, err
 	}
