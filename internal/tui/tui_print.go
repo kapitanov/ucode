@@ -15,6 +15,7 @@ var (
 	toolStyle       = color.New(color.FgHiYellow, color.Faint).SprintFunc()
 	errorStyle      = color.New(color.FgHiRed).SprintFunc()
 	compactionStyle = color.New(color.FgHiMagenta, color.Faint).SprintFunc()
+	usageStyle      = color.New(color.FgWhite, color.Faint).SprintFunc()
 )
 
 func Info(msg string) {
@@ -66,4 +67,10 @@ func Compaction(before, after int) {
 
 func Error(msg string) {
 	_, _ = fmt.Fprintf(color.Output, "%s\n", errorStyle(msg))
+}
+
+func Usage(tokens int, cost float64) {
+	str := fmt.Sprintf("[usage: %d tokens, $%.4f]", tokens, cost)
+
+	_, _ = fmt.Fprintf(color.Output, "%s\n", usageStyle(str))
 }

@@ -78,6 +78,7 @@ type Event struct {
 	ToolCall     *ToolCall
 	ToolResponse *ToolResponse
 	Compaction   *Compaction
+	Usage        *Usage
 	Error        error
 }
 
@@ -102,6 +103,11 @@ type ToolResponse struct {
 	Output, Error string
 }
 
+type Usage struct {
+	Tokens int
+	Cost   float64
+}
+
 func (a *Agent) Run(str string) <-chan Event {
 	ch := make(chan Event, 10)
 
@@ -121,12 +127,20 @@ func (a *Agent) Run(str string) <-chan Event {
 func (a *Agent) run(str string, ch chan<- Event) {
 	a.request.Messages = append(a.request.Messages, openrouter.UserMessage(str))
 	for {
-		done, err := a.runSingleOperation(ch)
+		response, done, err := a.runSingleOperation(ch)
 		if err != nil {
 			ch <- Event{Error: err}
 			return
 		}
+
 		if done {
+			if response != nil && response.Usage != nil {
+				ch <- Event{Usage: &Usage{
+					Tokens: response.Usage.TotalTokens,
+					Cost:   response.Usage.Cost,
+				}}
+			}
+
 			return
 		}
 	}
@@ -210,7 +224,7 @@ func (a *Agent) isSafeCutPoint(index int) bool {
 	return true
 }
 
-func (a *Agent) runSingleOperation(ch chan<- Event) (bool, error) {
+func (a *Agent) runSingleOperation(ch chan<- Event) (*openrouter.ChatCompletionResponse, bool, error) {
 	if compaction := a.compactMessages(); compaction != nil {
 		ch <- Event{Compaction: compaction}
 	}
@@ -220,11 +234,11 @@ func (a *Agent) runSingleOperation(ch chan<- Event) (bool, error) {
 
 	response, err := a.client.CreateChatCompletion(ctx, a.request)
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 
 	if len(response.Choices) == 0 {
-		return false, fmt.Errorf("api returned empty choices")
+		return nil, false, fmt.Errorf("api returned empty choices")
 	}
 
 	msg := response.Choices[0].Message
@@ -257,5 +271,5 @@ func (a *Agent) runSingleOperation(ch chan<- Event) (bool, error) {
 		ch <- Event{Error: fmt.Errorf("%s", msg.Refusal)}
 	}
 
-	return done, nil
+	return response, done, nil
 }

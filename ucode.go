@@ -154,6 +154,10 @@ func printMsg(e agent.Event) {
 		tui.Compaction(e.Compaction.Before, e.Compaction.After)
 	}
 
+	if e.Usage != nil {
+		tui.Usage(e.Usage.Tokens, e.Usage.Cost)
+	}
+
 	if e.Error != nil {
 		tui.Error(e.Error.Error())
 	}
