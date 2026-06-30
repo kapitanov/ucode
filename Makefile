@@ -1,6 +1,6 @@
-.PHONY: default build run
+.PHONY: default build run test test-coverage
 
-default: build
+default: build test
 
 build:
 	mkdir -p .out
@@ -8,3 +8,7 @@ build:
 
 run: build
 	./.out/ucode
+
+test:
+	go test ./...
+

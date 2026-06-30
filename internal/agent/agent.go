@@ -248,6 +248,14 @@ func (a *Agent) runSingleOperation(ch chan<- Event) (*openrouter.ChatCompletionR
 		ch <- Event{Reasoning: &Reasoning{Text: *msg.Reasoning}}
 	}
 
+	if msg.Content.Text != "" {
+		ch <- Event{Message: &Message{Text: msg.Content.Text}}
+	}
+
+	if msg.Refusal != "" {
+		ch <- Event{Error: fmt.Errorf("%s", msg.Refusal)}
+	}
+
 	done := true
 	for _, toolCall := range msg.ToolCalls {
 		done = false
@@ -261,14 +269,6 @@ func (a *Agent) runSingleOperation(ch chan<- Event) (*openrouter.ChatCompletionR
 		}
 
 		a.request.Messages = append(a.request.Messages, openrouter.ToolMessage(toolCall.ID, toolResponse))
-	}
-
-	if msg.Content.Text != "" {
-		ch <- Event{Message: &Message{Text: msg.Content.Text}}
-	}
-
-	if msg.Refusal != "" {
-		ch <- Event{Error: fmt.Errorf("%s", msg.Refusal)}
 	}
 
 	return response, done, nil
