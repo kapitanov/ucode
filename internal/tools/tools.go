@@ -3,130 +3,92 @@ package tools
 import (
 	"encoding/json"
 	"fmt"
-	"os"
-	"os/exec"
-	"path/filepath"
+	"maps"
 	"slices"
 	"strings"
 
+	"github.com/kapitanov/ucode/internal/iface"
 	"github.com/revrost/go-openrouter"
 	"github.com/revrost/go-openrouter/jsonschema"
 )
 
-func CheckDependencies() error {
-	if _, err := exec.LookPath("rg"); err != nil {
-		return fmt.Errorf("ripgrep (rg) is not installed or not in PATH")
-	}
-	return nil
+type Tool struct {
+	Name       string
+	Definition openrouter.Tool
+	Execute    func(ctx iface.Context, args string) ToolResult
 }
 
-func Definitions() []openrouter.Tool {
-	var tools []openrouter.Tool
-	for _, toolDef := range toolDefinitions {
-		tools = append(tools, openrouter.Tool{
-			Type: openrouter.ToolTypeFunction,
-			Function: &openrouter.FunctionDefinition{
-				Name:        toolDef.Name,
-				Description: toolDef.Description,
-				Strict:      true,
-				Parameters:  toolDef.Parameters,
-			},
-		})
-	}
-
-	slices.SortFunc(tools, func(a, b openrouter.Tool) int {
-		return strings.Compare(a.Function.Name, b.Function.Name)
-	})
-
-	return tools
+type ToolResult struct {
+	Result string
+	Error  error
 }
 
-func Execute(toolName string, toolArgs string) (string, error) {
-	toolDef, ok := toolDefinitions[toolName]
-	if !ok {
-		return "", fmt.Errorf("tool %q not found", toolName)
+func (r ToolResult) String() string {
+	if r.Error != nil {
+		return fmt.Sprintf("Error: %v", r.Error)
 	}
-
-	return toolDef.Execute(toolArgs)
-}
-
-func Describe(toolName string, toolArgs string) string {
-	toolDef, ok := toolDefinitions[toolName]
-	if !ok {
-		return fmt.Sprintf("ERROR: tool %q not found", toolName)
-	}
-
-	return toolDef.Describe(toolArgs)
-}
-
-type toolDefinition struct {
-	Name        string
-	Description string
-	Parameters  any
-	Execute     func(args string) (string, error)
-	Describe    func(args string) string
+	return r.Result
 }
 
 var (
-	toolDefinitions = make(map[string]toolDefinition)
+	tools = make(map[string]*Tool)
 )
 
-func defineTool[T, V any](name, description string, execute func(args T) (V, error), describe func(args T) string) {
+func All() []*Tool {
+	all := slices.Collect(maps.Values(tools))
+	slices.SortFunc(all, func(a, b *Tool) int {
+		return strings.Compare(a.Name, b.Name)
+	})
+	return all
+}
+
+func Execute(ctx iface.Context, toolName string, toolArgs string) ToolResult {
+	tool, ok := tools[toolName]
+	if !ok {
+		return ToolResult{Error: fmt.Errorf("tool %q not found", toolName)}
+	}
+
+	return tool.Execute(ctx, toolArgs)
+}
+
+func register[T, R any](
+	name, description string,
+	execute func(ctx iface.Context, args T) (R, error),
+) {
 	schema, err := jsonschema.GenerateSchema[T]()
 	if err != nil {
 		panic(err)
 	}
 
-	toolDefinitions[name] = toolDefinition{
-		Name:        name,
-		Description: description,
-		Parameters:  schema,
-		Execute: func(rawArgs string) (string, error) {
+	tool := &Tool{
+		Name: name,
+		Definition: openrouter.Tool{
+			Type: openrouter.ToolTypeFunction,
+			Function: &openrouter.FunctionDefinition{
+				Name:        name,
+				Description: description,
+				Strict:      true,
+				Parameters:  schema,
+			},
+		},
+		Execute: func(ctx iface.Context, rawArgs string) ToolResult {
 			var args T
 			if err := json.Unmarshal([]byte(rawArgs), &args); err != nil {
-				return "", fmt.Errorf("invalid arguments for tool %q: %v", name, err)
+				return ToolResult{Error: fmt.Errorf("invalid arguments for tool %q: %v", name, err)}
 			}
 
-			v, err := execute(args)
+			v, err := execute(ctx, args)
 			if err != nil {
-				return "", err
+				return ToolResult{Error: err}
 			}
 
 			result, err := json.Marshal(v)
 			if err != nil {
-				return "", err
+				return ToolResult{Error: err}
 			}
 
-			return string(result), nil
-		},
-		Describe: func(rawArgs string) string {
-			var args T
-			if err := json.Unmarshal([]byte(rawArgs), &args); err != nil {
-				return fmt.Sprintf("ERROR: invalid arguments for tool %q: %v", name, err)
-			}
-
-			return describe(args)
+			return ToolResult{Result: string(result)}
 		},
 	}
-}
-
-func normalizePath(path string) (string, error) {
-	wd, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-
-	normalizedPath, err := filepath.Abs(filepath.Clean(path))
-	if err != nil {
-		return "", err
-	}
-
-	// Check if normalizedPath is within wd (allow exact match or subdirectories)
-	if normalizedPath != wd {
-		if !strings.HasPrefix(normalizedPath, wd+string(filepath.Separator)) {
-			return "", fmt.Errorf("directory %q is outside of the working directory", path)
-		}
-	}
-
-	return normalizedPath, nil
+	tools[name] = tool
 }

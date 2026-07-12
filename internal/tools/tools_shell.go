@@ -4,25 +4,54 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+
+	"github.com/kapitanov/ucode/internal/iface"
+	"github.com/kapitanov/ucode/internal/tools/guardrails"
 )
 
 func init() {
-	defineTool("shell", "execute a shell command", shellTool, shellToolDescribe)
+	register("shell", "execute a shell command", shellToolExecute)
 }
 
 type (
 	shellToolArgs struct {
-		Cmd string `json:"cmd" description:"command to execute"`
+		Command string `json:"command" jsonschema_description:"shell command to execute"`
 	}
 
 	shellToolResult struct {
-		Output   string `json:"output" description:"output of the shell command"`
-		ExitCode int    `json:"exit_code" description:"exit code of the shell command"`
+		Output   string `json:"output"    jsonschema_description:"output of the shell command"`
+		ExitCode int    `json:"exit_code" jsonschema_description:"exit code of the shell command"`
 	}
 )
 
-func shellTool(args shellToolArgs) (shellToolResult, error) {
-	cmd := exec.Command("sh", "-c", args.Cmd)
+func shellToolExecute(ctx iface.Context, args shellToolArgs) (shellToolResult, error) {
+	toolCall := shellToolDescribe(args)
+
+	if !guardrails.IsAllowedCommand(ctx, args.Command) {
+		ctx.ToolCall(toolCall).Failure("shell command execution not allowed")
+		return shellToolResult{}, fmt.Errorf("shell command execution not allowed")
+	}
+
+	callToken := ctx.ToolCall(toolCall)
+	result, err := shellToolExecuteImpl(args)
+	if err != nil {
+		callToken.Failure(err.Error())
+		return shellToolResult{}, err
+	}
+	callToken.Success()
+
+	return result, nil
+}
+
+func shellToolDescribe(args shellToolArgs) iface.ToolCall {
+	return iface.ToolCall{
+		Type: "SHELL",
+		Args: args.Command,
+	}
+}
+
+func shellToolExecuteImpl(args shellToolArgs) (shellToolResult, error) {
+	cmd := exec.Command("sh", "-c", args.Command)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
@@ -39,8 +68,4 @@ func shellTool(args shellToolArgs) (shellToolResult, error) {
 		Output:   string(output),
 		ExitCode: 0,
 	}, nil
-}
-
-func shellToolDescribe(args shellToolArgs) string {
-	return fmt.Sprintf("SHELL %s", args.Cmd)
 }
