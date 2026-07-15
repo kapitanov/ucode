@@ -6,11 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/kapitanov/ucode/internal/agents/compaction"
 	"github.com/kapitanov/ucode/internal/iface"
 	"github.com/kapitanov/ucode/internal/tools"
+	"github.com/kapitanov/ucode/internal/tui"
 	"github.com/revrost/go-openrouter"
 	"go.yaml.in/yaml/v3"
 )
@@ -27,10 +29,37 @@ func New(llmConn iface.LLM, defaultModel string) iface.Agents {
 		panic(err)
 	}
 
+	agents := make(map[string]iface.Agent)
+	for _, def := range agentsConfig.Roles {
+		prompt := def.Prompt + "\n\n" + agentsConfig.SharedPrompt
+		model := def.Model
+		if model == "" {
+			model = defaultModel
+			if model == "" {
+				model = agentsConfig.DefaultModel
+			}
+		}
+
+		agent := newAgentImpl(def.Name, def.Role, prompt, model, def.ForbiddenTools, llmConn)
+		agents[def.Name] = agent
+
+		var toolsList []string
+		for _, t := range agent.tools {
+			toolsList = append(toolsList, t.Function.Name)
+		}
+		tui.Printf("%% Agent %q (%s):", agent.name, def.Role)
+		tui.Printf("%%   Model = %s", model)
+		tui.Printf("%%   Tools = %s", strings.Join(toolsList, ", "))
+	}
+
+	defaultAgent := agents[agentsConfig.DefaultRole]
+	if defaultAgent == nil {
+		panic(fmt.Sprintf("default agent %q is not defined", agentsConfig.DefaultRole))
+	}
+
 	return &agentsImpl{
-		agentsConfig: agentsConfig,
-		llmConn:      llmConn,
-		defaultModel: defaultModel,
+		defaultAgent: defaultAgent,
+		agents:       agents,
 	}
 }
 
@@ -48,54 +77,31 @@ type agentsConfigYAML struct {
 
 type agentConfigYAML struct {
 	Name           string   `yaml:"name"`
+	Role           string   `yaml:"role"`
 	Prompt         string   `yaml:"prompt"`
 	Model          string   `yaml:"model"`
 	ForbiddenTools []string `yaml:"forbidden_tools"`
 }
 
 type agentsImpl struct {
-	agentsConfig agentsConfigYAML
-	llmConn      iface.LLM
-	defaultModel string
+	defaultAgent iface.Agent
+	agents       map[string]iface.Agent
 }
 
-func (a *agentsImpl) Default() iface.Agent {
-	agent := a.ByRole(a.agentsConfig.DefaultRole)
-	if agent == nil {
-		panic("default agent role is not defined")
-	}
-	return agent
-}
-
-func (a *agentsImpl) ByRole(role string) iface.Agent {
-	def, ok := a.agentsConfig.Roles[role]
-	if !ok {
-		return nil
-	}
-
-	prompt := def.Prompt + "\n\n" + a.agentsConfig.SharedPrompt
-	model := def.Model
-	if model == "" {
-		model = a.defaultModel
-		if model == "" {
-			model = a.agentsConfig.DefaultModel
-		}
-	}
-
-	agent := newAgentImpl(def.Name, prompt, model, def.ForbiddenTools, a.llmConn)
-	return agent
-}
+func (a *agentsImpl) Default() iface.Agent           { return a.defaultAgent }
+func (a *agentsImpl) ByRole(role string) iface.Agent { return a.agents[role] }
 
 type agentImpl struct {
-	name, prompt, model string
-	llm                 iface.LLM
+	name, role, prompt, model string
+	llm                       iface.LLM
+	tools                     []openrouter.Tool
 
 	request           openrouter.ChatCompletionRequest
 	maxMessages       int
 	compactedMessages int
 }
 
-func newAgentImpl(name, prompt, model string, forbiddenTools []string, llmConn iface.LLM) *agentImpl {
+func newAgentImpl(name, role, prompt, model string, forbiddenTools []string, llmConn iface.LLM) *agentImpl {
 	var ts []openrouter.Tool
 	for _, t := range tools.All() {
 		if slices.Contains(forbiddenTools, t.Name) {
@@ -107,6 +113,7 @@ func newAgentImpl(name, prompt, model string, forbiddenTools []string, llmConn i
 
 	return &agentImpl{
 		name:   name,
+		role:   role,
 		prompt: prompt,
 		model:  model,
 		llm:    llmConn,
@@ -117,6 +124,7 @@ func newAgentImpl(name, prompt, model string, forbiddenTools []string, llmConn i
 			},
 			Tools: ts,
 		},
+		tools:       ts,
 		maxMessages: DefaultMaxMessages,
 	}
 }

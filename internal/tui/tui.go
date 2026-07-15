@@ -29,9 +29,11 @@ var (
 	successfulToolStyle = color.New(color.FgGreen, color.Faint).SprintFunc()
 	failureToolStyle    = color.New(color.FgHiRed, color.Faint).SprintFunc()
 
-	hintStyle         = color.New(color.FgWhite, color.Faint).SprintFunc()
-	outputHeaderStyle = color.New(color.FgHiWhite, color.Bold).SprintFunc()
-	outputItemStyle   = color.New(color.FgHiWhite).SprintFunc()
+	hintStyle              = color.New(color.FgWhite, color.Faint).SprintFunc()
+	outputHeaderStyle      = color.New(color.FgHiWhite, color.Bold).SprintFunc()
+	outputItemStyle        = color.New(color.FgHiWhite).SprintFunc()
+	successOutputItemStyle = color.New(color.FgHiGreen).SprintFunc()
+	errorOutputItemStyle   = color.New(color.FgHiRed).SprintFunc()
 
 	questionStyle         = color.New(color.FgHiMagenta).SprintFunc()
 	selectedQuestionStyle = color.New(color.FgHiMagenta, color.Underline).SprintFunc()
@@ -43,7 +45,7 @@ func Printf(format string, a ...any) {
 }
 
 type UI struct {
-	plan           iface.Plan
+	plan           *iface.Plan
 	memory         *iface.Memory
 	llm            iface.LLM
 	printReasoning bool
@@ -234,19 +236,20 @@ func (t *toolCallToken) Failure(reason string) {
 	_, _ = fmt.Fprintf(color.Output, "%s\n", failureToolStyle(reason))
 }
 
-func (u *UI) SetPlan(plan iface.Plan) {
+func (u *UI) SetPlan(plan *iface.Plan) {
 	u.plan = plan
-	u.printHint(fmt.Sprintf("Plan has been updated (%d/%d)", len(plan.Completed()), len(plan.Items)))
+}
+
+func (u *UI) PrintPlan() {
 	u.printPlan()
 }
 
 func (u *UI) SetMemory(memory *iface.Memory) {
 	u.memory = memory
-	u.printHint(fmt.Sprintf("Memory has been updated (%d)", len(memory.Items)))
 }
 
-func (u *UI) printHint(str string) {
-	_, _ = fmt.Fprintf(color.Output, "%s\n", hintStyle(str))
+func (u *UI) Usage() {
+	u.printUsage()
 }
 
 func (u *UI) Close() {}

@@ -42,7 +42,7 @@ func IsAllowedPath(path string) bool {
 	for path != "" && path != "." && path != string(filepath.Separator) {
 		name := filepath.Base(path)
 		switch name {
-		case ".git", ".env":
+		case ".git", ".env", ".agents":
 			return false
 		}
 

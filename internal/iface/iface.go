@@ -23,6 +23,7 @@ type Agent interface {
 
 type Context interface {
 	// Input
+	UI() UI
 	Prompt() string
 	Ask(question string, options []string) int
 	Thinking() ThinkingToken
@@ -34,14 +35,14 @@ type Context interface {
 	ToolCall(toolCall ToolCall) ToolCallToken
 
 	// Planning
-	Plan() Plan
+	Plan() *Plan
 	ClearPlan()
-	WritePlan(items []string) Plan
-	CheckPlanItem(index int) Plan
+	WritePlan(items []string) *Plan
+	CheckPlanItem(indices ...int) *Plan
 
 	// Memory
-	Memory() Memory
-	WriteMemory(key, value string) Memory
+	Memory() *Memory
+	WriteMemory(key, value string) *Memory
 
 	// Subagents
 	Agents() Agents
@@ -61,7 +62,9 @@ type UI interface {
 	Refusal(agentName, response string)
 	ToolCall(toolCall ToolCall) ToolCallToken
 
-	SetPlan(plan Plan)
+	Usage()
+	SetPlan(plan *Plan)
+	PrintPlan()
 	SetMemory(memory *Memory)
 }
 
@@ -80,7 +83,7 @@ type ToolCallToken interface {
 }
 
 type Plan struct {
-	Items []PlanItem
+	Items []PlanItem `json:"items"`
 }
 
 func (p Plan) Completed() []PlanItem {
@@ -95,13 +98,13 @@ func (p Plan) Completed() []PlanItem {
 }
 
 type PlanItem struct {
-	Index int
-	Done  bool
-	Title string
+	Index int    `json:"-"`
+	Done  bool   `json:"done"`
+	Title string `json:"title"`
 }
 
 type Memory struct {
-	Items []MemoryItem
+	Items []MemoryItem `json:"items"`
 }
 
 func (m Memory) Get(key string) string {
@@ -115,8 +118,8 @@ func (m Memory) Get(key string) string {
 }
 
 type MemoryItem struct {
-	Key   string
-	Value string
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }
 
 type Sandbox interface {

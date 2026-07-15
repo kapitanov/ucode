@@ -21,6 +21,7 @@ func clearPlanToolExecute(ctx iface.Context, args clearPlanToolArgs) (clearPlanT
 		return clearPlanToolResult{}, err
 	}
 
+	ctx.UI().PrintPlan()
 	return result, nil
 }
 

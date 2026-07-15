@@ -43,12 +43,12 @@ func (u *UI) printPlan() {
 	width := len(fmt.Sprintf("%d", len(u.plan.Items)+1))
 
 	for _, item := range u.plan.Items {
-		status := ""
+		status := errorOutputItemStyle("◻")
 		if item.Done {
-			status = "✅ "
+			status = successOutputItemStyle("▣")
 		}
 
-		_, _ = fmt.Fprintf(color.Output, "  %s) %s%s\n", outputItemStyle(fmt.Sprintf("%*d", width, item.Index)), status, outputItemStyle(item.Title))
+		_, _ = fmt.Fprintf(color.Output, "  %s) %s %s\n", outputItemStyle(fmt.Sprintf("%*d", width, item.Index)), status, outputItemStyle(item.Title))
 	}
 }
 
@@ -62,13 +62,8 @@ func (u *UI) printMemory() {
 func (u *UI) printUsage() {
 	usage := u.llm.Usage()
 
-	_, _ = fmt.Fprintf(
-		color.Output,
-		"%s %s, %s\n",
-		outputHeaderStyle("USAGE:"),
-		outputItemStyle(tokens(int64(usage.TotalTokens))),
-		outputItemStyle(fmt.Sprintf("$%0.2f", usage.Cost)),
-	)
+	usageText := fmt.Sprintf("USAGE: %s, $%0.2f\n", tokens(int64(usage.TotalTokens)), usage.Cost)
+	_, _ = fmt.Fprintf(color.Output, "%s\n", hintStyle(usageText))
 }
 
 func tokens(s int64) string {

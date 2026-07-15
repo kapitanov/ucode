@@ -28,13 +28,18 @@ type (
 )
 
 func checkPlanToolExecute(ctx iface.Context, args checkPlanToolArgs) (checkPlanToolResult, error) {
-	result, err := checkPlanExecuteImpl(ctx, args)
+	toolCall := checkPlanToolDescribe(args)
+
+	plan, result, err := checkPlanExecuteImpl(ctx, args)
 	if err != nil {
-		toolCall := checkPlanToolDescribe(args)
 		ctx.ToolCall(toolCall).Failure(err.Error())
 		return checkPlanToolResult{}, err
 	}
 
+	toolCall.Args += fmt.Sprintf(" (%d/%d)", len(plan.Completed()), len(plan.Items))
+	ctx.ToolCall(toolCall).Success()
+
+	ctx.UI().PrintPlan()
 	return result, nil
 }
 
@@ -50,11 +55,8 @@ func checkPlanToolDescribe(args checkPlanToolArgs) iface.ToolCall {
 	}
 }
 
-func checkPlanExecuteImpl(ctx iface.Context, args checkPlanToolArgs) (checkPlanToolResult, error) {
-	plan := ctx.Plan()
-	for _, index := range args.Indices {
-		plan = ctx.CheckPlanItem(index)
-	}
+func checkPlanExecuteImpl(ctx iface.Context, args checkPlanToolArgs) (*iface.Plan, checkPlanToolResult, error) {
+	plan := ctx.CheckPlanItem(args.Indices...)
 
 	result := checkPlanToolResult{
 		Items: make([]checkPlanToolResultItem, len(plan.Items)),
@@ -67,5 +69,5 @@ func checkPlanExecuteImpl(ctx iface.Context, args checkPlanToolArgs) (checkPlanT
 		}
 	}
 
-	return result, nil
+	return plan, result, nil
 }

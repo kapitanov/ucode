@@ -40,6 +40,7 @@ func writePlanToolExecute(ctx iface.Context, args writePlanToolArgs) (writePlanT
 		return writePlanToolResult{}, err
 	}
 
+	ctx.UI().PrintPlan()
 	return result, nil
 }
 

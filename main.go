@@ -37,7 +37,10 @@ func main() {
 	agentsSandbox := configureSandbox(agentsUI)
 	agentsRegistry := agents.New(llmConn, defaultModel)
 
-	runner.RunAgent(agentsSandbox, agentsRegistry, agentsUI, agentsRegistry.Default())
+	err := runner.RunAgent(agentsSandbox, agentsRegistry, agentsUI, agentsRegistry.Default())
+	if err != nil {
+		panic(err)
+	}
 }
 
 func configureWD() {

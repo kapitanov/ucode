@@ -7,35 +7,40 @@ import (
 )
 
 func RunAgent(sandbox iface.Sandbox, agents iface.Agents, ui iface.UI, agent iface.Agent) error {
-	ctx := newContext(sandbox, agents, ui)
-	ctx.agentName = agent.Name()
+	ctx := &contextImpl{
+		sandbox:   sandbox,
+		agents:    agents,
+		ui:        ui,
+		plan:      newPersistedPlanStorage(),
+		memory:    newMemoryStorage(),
+		agentName: agent.Name(),
+	}
+	ui.SetPlan(ctx.Plan())
+	ui.SetMemory(ctx.Memory())
 	return agent.Run(ctx)
 }
 
 type contextImpl struct {
-	agentName   string
-	output      strings.Builder
-	agents      iface.Agents
-	sandbox     iface.Sandbox
-	ui          iface.UI
-	plan        iface.Plan
-	memory      *iface.Memory
-	inputStream []string
-}
-
-func newContext(sandbox iface.Sandbox, agents iface.Agents, ui iface.UI) *contextImpl {
-	return &contextImpl{
-		sandbox: sandbox,
-		agents:  agents,
-		ui:      ui,
-		plan:    iface.Plan{},
-		memory:  &iface.Memory{},
-	}
+	agentName        string
+	output           strings.Builder
+	agents           iface.Agents
+	sandbox          iface.Sandbox
+	ui               iface.UI
+	plan             planStorage
+	memory           *memoryStorage
+	inputStream      []string
+	shouldPrintUsage bool
 }
 
 // Input
+func (c *contextImpl) UI() iface.UI { return c.ui }
+
 func (c *contextImpl) Prompt() string {
 	if c.inputStream == nil {
+		if c.shouldPrintUsage {
+			c.ui.Usage()
+		}
+		c.shouldPrintUsage = true
 		return c.ui.Prompt()
 	}
 
@@ -64,53 +69,69 @@ func (c *contextImpl) ToolCall(toolCall iface.ToolCall) iface.ToolCallToken {
 	return c.ui.ToolCall(toolCall)
 }
 
-func (c *contextImpl) Plan() iface.Plan { return c.plan }
+func (c *contextImpl) Plan() *iface.Plan { return c.plan.Get() }
 func (c *contextImpl) ClearPlan() {
-	c.plan = iface.Plan{}
-	c.ui.SetPlan(c.plan)
+	plan := c.plan.Get()
+	plan.Items = []iface.PlanItem{}
+	c.ui.SetPlan(plan)
+	_ = c.plan.Save()
 }
-func (c *contextImpl) WritePlan(items []string) iface.Plan {
-	plan := c.plan
+func (c *contextImpl) WritePlan(items []string) *iface.Plan {
+	plan := c.plan.Get()
 	for _, item := range items {
 		plan.Items = append(plan.Items, iface.PlanItem{Index: len(plan.Items) + 1, Done: false, Title: item})
 	}
-	c.plan = plan
-	c.ui.SetPlan(c.plan)
-	return c.plan
+	c.ui.SetPlan(plan)
+	_ = c.plan.Save()
+	return plan
 }
-func (c *contextImpl) CheckPlanItem(index int) iface.Plan {
-	i := index - 1
-	if i < 0 || i >= len(c.plan.Items) {
-		return c.plan
+func (c *contextImpl) CheckPlanItem(indices ...int) *iface.Plan {
+	plan := c.plan.Get()
+	for _, index := range indices {
+		i := index - 1
+		if i < 0 || i >= len(plan.Items) {
+			continue
+		}
+		plan.Items[i].Done = true
 	}
-	c.plan.Items[i].Done = true
-	c.ui.SetPlan(c.plan)
-	return c.plan
+
+	c.ui.SetPlan(plan)
+	_ = c.plan.Save()
+	return plan
 }
 
-func (c *contextImpl) Memory() iface.Memory { return *c.memory }
-func (c *contextImpl) WriteMemory(key, value string) iface.Memory {
-	for i := range c.memory.Items {
-		if c.memory.Items[i].Key == key {
-			c.memory.Items[i].Value = value
-			c.ui.SetMemory(c.memory)
-			return *c.memory
+func (c *contextImpl) Memory() *iface.Memory { return c.memory.Get() }
+func (c *contextImpl) WriteMemory(key, value string) *iface.Memory {
+	memory := c.memory.Get()
+	for i := range memory.Items {
+		if memory.Items[i].Key == key {
+			memory.Items[i].Value = value
+			c.ui.SetMemory(memory)
+			_ = c.memory.Save()
+			return memory
 		}
 	}
 
-	c.memory.Items = append(c.memory.Items, iface.MemoryItem{Key: key, Value: value})
-	c.ui.SetMemory(c.memory)
-	return *c.memory
+	memory.Items = append(memory.Items, iface.MemoryItem{Key: key, Value: value})
+	c.ui.SetMemory(memory)
+	_ = c.memory.Save()
+	return memory
 }
 
 func (c *contextImpl) Sandbox() iface.Sandbox { return c.sandbox }
 func (c *contextImpl) Agents() iface.Agents   { return c.agents }
 
 func (c *contextImpl) RunSubagent(agent iface.Agent, request string) (string, error) {
-	ctx := newContext(c.sandbox, c.agents, c.ui)
-	ctx.agentName = agent.Name()
-	ctx.memory = c.memory
-	ctx.inputStream = []string{request}
+	_ = writeSubagentCallFile(agent, request)
+	ctx := &contextImpl{
+		sandbox:     c.sandbox,
+		agents:      c.agents,
+		ui:          c.ui,
+		plan:        newTransientPlanStorage(),
+		memory:      c.memory,
+		agentName:   agent.Name(),
+		inputStream: []string{request},
+	}
 
 	err := agent.Run(ctx)
 	if err != nil {

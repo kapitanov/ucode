@@ -28,5 +28,8 @@ func runSubagentToolExecute(ctx iface.Context, args runSubagentToolArgs) (runSub
 	}
 
 	response, err := ctx.RunSubagent(agent, args.Request)
+	if err != nil {
+		ctx.ToolCall(iface.ToolCall{Type: "SUBAGENT", Args: args.Role}).Failure(err.Error())
+	}
 	return runSubagentToolResult{Response: response}, err
 }
