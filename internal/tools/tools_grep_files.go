@@ -1,19 +1,10 @@
 package tools
 
 import (
-	"fmt"
-	"os/exec"
-	"strings"
-
 	"github.com/kapitanov/ucode/internal/iface"
-	"github.com/kapitanov/ucode/internal/tools/guardrails"
 )
 
 func init() {
-	if _, err := exec.LookPath("rg"); err != nil {
-		panic("ripgrep (rg) is not installed or not in PATH")
-	}
-
 	register("grep_files", "search files in a directory", grepFilesToolExecute)
 }
 
@@ -35,7 +26,7 @@ func grepFilesToolExecute(ctx iface.Context, args grepFilesToolArgs) (grepFilesT
 	toolCall := grepFilesToolDescribe(args)
 
 	callToken := ctx.ToolCall(toolCall)
-	result, err := grepFilesToolExecuteImpl(args)
+	result, err := grepFilesToolExecuteImpl(ctx, args)
 	if err != nil {
 		callToken.Failure(err.Error())
 		return grepFilesToolResult{}, err
@@ -66,55 +57,14 @@ func grepFilesToolDescribe(args grepFilesToolArgs) iface.ToolCall {
 	}
 }
 
-func grepFilesToolExecuteImpl(args grepFilesToolArgs) (grepFilesToolResult, error) {
-	if args.Path == nil || *args.Path == "" {
-		args.Path = new(".")
-	}
-
-	path, err := guardrails.NormalizePath(*args.Path)
+func grepFilesToolExecuteImpl(ctx iface.Context, args grepFilesToolArgs) (grepFilesToolResult, error) {
+	results, err := ctx.Sandbox().SearchFiles(args.Pattern, args.Path, args.FileType, args.CaseSensitive)
 	if err != nil {
 		return grepFilesToolResult{}, err
 	}
-	if !guardrails.IsAllowedPath(path) {
-		return grepFilesToolResult{}, fmt.Errorf("access to path %q is not allowed", path)
-	}
-
-	// Build ripgrep command
-	rgArgs := []string{"--line-number", "--with-filename", "--color=never"}
-
-	// Add case sensitivity flag
-	if args.CaseSensitive == nil || !*args.CaseSensitive {
-		rgArgs = append(rgArgs, "--ignore-case")
-	}
-
-	// Add file type filter if specified
-	if args.FileType != nil && *args.FileType != "" {
-		rgArgs = append(rgArgs, "--type", *args.FileType)
-	}
-
-	rgArgs = append(rgArgs, args.Pattern, path)
-
-	cmd := exec.Command("rg", rgArgs...)
-	output, err := cmd.Output()
-
-	// ripgrep returns exit code 1 when no matches are found, which is not an error
-	if err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() == 1 {
-			return grepFilesToolResult{}, nil
-		}
-		return grepFilesToolResult{}, fmt.Errorf("search failed: %w", err)
-	}
-
-	outputStr := strings.TrimSpace(string(output))
-	if outputStr == "" {
-		return grepFilesToolResult{Results: []string{}, TotalCount: 0}, nil
-	}
-
-	lines := strings.Split(outputStr, "\n")
-
 	result := grepFilesToolResult{
-		Results:    lines,
-		TotalCount: len(lines),
+		Results:    results,
+		TotalCount: len(results),
 	}
 
 	// Limit output to prevent overwhelming responses

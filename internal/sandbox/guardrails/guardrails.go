@@ -2,23 +2,11 @@ package guardrails
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 )
 
-func NormalizePath(path string) (string, error) {
-	wd, err := os.Getwd()
-	if err != nil {
-		return "", err
-	}
-	// Resolve symlinks in the working directory so subsequent comparisons are
-	// made against the physical path. This avoids false rejections when wd is
-	// itself reached through a symlink.
-	if wd, err = filepath.EvalSymlinks(wd); err != nil {
-		return "", err
-	}
-
+func NormalizePath(wd, path string) (string, error) {
 	absPath, err := filepath.Abs(filepath.Clean(path))
 	if err != nil {
 		return "", err
@@ -51,11 +39,19 @@ func NormalizePath(path string) (string, error) {
 }
 
 func IsAllowedPath(path string) bool {
-	name := filepath.Base(path)
-	switch name {
-	case ".git", ".env":
-		return false
-	default:
-		return true
+	for path != "" && path != "." && path != string(filepath.Separator) {
+		name := filepath.Base(path)
+		switch name {
+		case ".git", ".env":
+			return false
+		}
+
+		parent := filepath.Dir(path)
+		if parent == path {
+			break
+		}
+		path = parent
 	}
+
+	return true
 }

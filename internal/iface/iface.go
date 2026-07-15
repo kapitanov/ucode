@@ -45,6 +45,7 @@ type Context interface {
 
 	// Subagents
 	Agents() Agents
+	Sandbox() Sandbox
 	RunSubagent(agent Agent, request string) (string, error)
 }
 
@@ -106,4 +107,15 @@ type Memory struct {
 type MemoryItem struct {
 	Key   string
 	Value string
+}
+
+type Sandbox interface {
+	RequireManualValidation() bool
+	ReadFile(path string) (bs []byte, err error)
+	ListFiles(dir string) (dirs []string, files []string, err error)
+	SearchFiles(pattern string, path, fileType *string, caseSensitive *bool) (results []string, err error)
+	WriteFile(path string, bs []byte) (err error)
+	PatchFile(path, diff string) (bs []byte, err error)
+	RemoveFile(path string) (err error)
+	ShellCommand(command string) (output string, exitCode int, err error)
 }

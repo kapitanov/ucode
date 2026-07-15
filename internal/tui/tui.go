@@ -14,11 +14,12 @@ import (
 )
 
 var (
+	printStyle    = color.New(color.FgYellow, color.Italic).SprintFunc()
 	cursorStyle   = color.New(color.FgHiGreen, color.Bold).SprintFunc()
 	thinkingStyle = color.New(color.FgHiYellow).SprintFunc()
 
-	reasoningAgentNameStyle = color.New(color.FgCyan, color.Bold).SprintFunc()
-	reasoningMessageStyle   = color.New(color.FgCyan).SprintFunc()
+	reasoningAgentNameStyle = color.New(color.FgCyan, color.Bold, color.Italic).SprintFunc()
+	reasoningMessageStyle   = color.New(color.FgCyan, color.Italic).SprintFunc()
 	responseAgentNameStyle  = color.New(color.FgHiWhite, color.Bold).SprintFunc()
 	responseMessageStyle    = color.New(color.FgHiWhite).SprintFunc()
 	refusalAgentNameStyle   = color.New(color.FgHiRed, color.Bold).SprintFunc()
@@ -36,6 +37,10 @@ var (
 	selectedQuestionStyle = color.New(color.FgHiMagenta, color.Underline).SprintFunc()
 	errorStyle            = color.New(color.FgRed).SprintFunc()
 )
+
+func Printf(format string, a ...any) {
+	_, _ = fmt.Fprintf(color.Output, "%s\n", printStyle(fmt.Sprintf(format, a...)))
+}
 
 type UI struct {
 	plan   iface.Plan

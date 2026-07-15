@@ -1,14 +1,11 @@
 package tools
 
 import (
-	"errors"
 	"fmt"
-	"os"
 	"strings"
 
+	"github.com/kapitanov/ucode/internal/etc/difftool"
 	"github.com/kapitanov/ucode/internal/iface"
-	"github.com/kapitanov/ucode/internal/tools/difftool"
-	"github.com/kapitanov/ucode/internal/tools/guardrails"
 )
 
 func init() {
@@ -21,14 +18,16 @@ type (
 		Diff string `json:"diff" jsonschema_description:"unified diff to apply to the file, compatible with GNU patch. Format: '--- a/file\\n+++ b/file\\n@@ -L,S +L,S @@\\n context\\n-removed\\n+added'. Use context lines (no prefix) around changes. For new files, use /dev/null as the source path."`
 	}
 
-	editFileToolResult struct{}
+	editFileToolResult struct {
+		Content string `json:"content" jsonschema_description:"patched content of the file"`
+	}
 )
 
 func editFileToolExecute(ctx iface.Context, args editFileToolArgs) (editFileToolResult, error) {
 	toolCall := editFileToolDescribe(args)
 
 	callToken := ctx.ToolCall(toolCall)
-	result, err := editFileToolExecuteImpl(args)
+	result, err := editFileToolExecuteImpl(ctx, args)
 	if err != nil {
 		callToken.Failure(err.Error())
 		return editFileToolResult{}, err
@@ -47,32 +46,11 @@ func editFileToolDescribe(args editFileToolArgs) iface.ToolCall {
 	}
 }
 
-func editFileToolExecuteImpl(args editFileToolArgs) (editFileToolResult, error) {
-	path, err := guardrails.NormalizePath(args.Path)
+func editFileToolExecuteImpl(ctx iface.Context, args editFileToolArgs) (editFileToolResult, error) {
+	patched, err := ctx.Sandbox().PatchFile(args.Path, args.Diff)
 	if err != nil {
 		return editFileToolResult{}, err
 	}
-	if !guardrails.IsAllowedPath(path) {
-		return editFileToolResult{}, fmt.Errorf("access to path %q is not allowed", path)
-	}
 
-	original := ""
-	existing, err := os.ReadFile(path)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return editFileToolResult{}, fmt.Errorf("failed to read file %q: %v", args.Path, err)
-	} else if err == nil {
-		original = string(existing)
-	}
-
-	patched, err := difftool.Apply(original, args.Diff)
-	if err != nil {
-		return editFileToolResult{}, fmt.Errorf("failed to apply diff to %q: %v", args.Path, err)
-	}
-
-	err = os.WriteFile(path, []byte(patched), 0666)
-	if err != nil {
-		return editFileToolResult{}, fmt.Errorf("failed to write file %q: %v", args.Path, err)
-	}
-
-	return editFileToolResult{}, nil
+	return editFileToolResult{Content: string(patched)}, nil
 }

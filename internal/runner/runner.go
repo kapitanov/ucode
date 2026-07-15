@@ -6,8 +6,8 @@ import (
 	"github.com/kapitanov/ucode/internal/iface"
 )
 
-func RunAgent(agents iface.Agents, ui iface.UI, agent iface.Agent) error {
-	ctx := newContext(agents, ui)
+func RunAgent(sandbox iface.Sandbox, agents iface.Agents, ui iface.UI, agent iface.Agent) error {
+	ctx := newContext(sandbox, agents, ui)
 	ctx.agentName = agent.Name()
 	return agent.Run(ctx)
 }
@@ -16,18 +16,20 @@ type contextImpl struct {
 	agentName   string
 	output      strings.Builder
 	agents      iface.Agents
+	sandbox     iface.Sandbox
 	ui          iface.UI
 	plan        iface.Plan
 	memory      *iface.Memory
 	inputStream []string
 }
 
-func newContext(agents iface.Agents, ui iface.UI) *contextImpl {
+func newContext(sandbox iface.Sandbox, agents iface.Agents, ui iface.UI) *contextImpl {
 	return &contextImpl{
-		agents: agents,
-		ui:     ui,
-		plan:   iface.Plan{},
-		memory: &iface.Memory{},
+		sandbox: sandbox,
+		agents:  agents,
+		ui:      ui,
+		plan:    iface.Plan{},
+		memory:  &iface.Memory{},
 	}
 }
 
@@ -101,10 +103,11 @@ func (c *contextImpl) WriteMemory(key, value string) iface.Memory {
 	return *c.memory
 }
 
-func (c *contextImpl) Agents() iface.Agents { return c.agents }
+func (c *contextImpl) Sandbox() iface.Sandbox { return c.sandbox }
+func (c *contextImpl) Agents() iface.Agents   { return c.agents }
 
 func (c *contextImpl) RunSubagent(agent iface.Agent, request string) (string, error) {
-	ctx := newContext(c.agents, c.ui)
+	ctx := newContext(c.sandbox, c.agents, c.ui)
 	ctx.agentName = agent.Name()
 	ctx.memory = c.memory
 	ctx.inputStream = []string{request}

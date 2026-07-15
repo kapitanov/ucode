@@ -1,12 +1,8 @@
 package tools
 
 import (
-	"fmt"
-	"os"
-
 	"github.com/bmatcuk/doublestar/v4"
 	"github.com/kapitanov/ucode/internal/iface"
-	"github.com/kapitanov/ucode/internal/tools/guardrails"
 )
 
 func init() {
@@ -29,7 +25,7 @@ func listFilesToolExecute(ctx iface.Context, args listFilesToolArgs) (listFilesT
 	toolCall := listFilesToolDescribe(args)
 
 	callToken := ctx.ToolCall(toolCall)
-	result, err := listFilesToolExecuteImpl(args)
+	result, err := listFilesToolExecuteImpl(ctx, args)
 	if err != nil {
 		callToken.Failure(err.Error())
 		return listFilesToolResult{}, err
@@ -51,13 +47,11 @@ func listFilesToolDescribe(args listFilesToolArgs) iface.ToolCall {
 	}
 }
 
-func listFilesToolExecuteImpl(args listFilesToolArgs) (listFilesToolResult, error) {
-	dir, err := guardrails.NormalizePath(args.Dir)
+func listFilesToolExecuteImpl(ctx iface.Context, args listFilesToolArgs) (listFilesToolResult, error) {
+	dirs, files, err := ctx.Sandbox().ListFiles(args.Dir)
 	if err != nil {
 		return listFilesToolResult{}, err
 	}
-
-	args.Dir = dir
 
 	filter := func(string) bool { return true }
 	if args.Pattern != nil {
@@ -70,26 +64,25 @@ func listFilesToolExecuteImpl(args listFilesToolArgs) (listFilesToolResult, erro
 		}
 	}
 
-	entries, err := os.ReadDir(args.Dir)
-	if err != nil {
-		return listFilesToolResult{}, fmt.Errorf("failed to read directory %q: %v", args.Dir, err)
+	result := listFilesToolResult{
+		Dirs:  []string{},
+		Files: []string{},
 	}
 
-	var result listFilesToolResult
-	for _, entry := range entries {
-		if !guardrails.IsAllowedPath(entry.Name()) {
+	for _, dir := range dirs {
+		if !filter(dir) {
 			continue
 		}
 
-		if !filter(entry.Name()) {
+		result.Dirs = append(result.Dirs, dir)
+	}
+
+	for _, file := range files {
+		if !filter(file) {
 			continue
 		}
 
-		if entry.IsDir() {
-			result.Dirs = append(result.Dirs, entry.Name())
-		} else {
-			result.Files = append(result.Files, entry.Name())
-		}
+		result.Files = append(result.Files, file)
 	}
 
 	return result, nil

@@ -8,27 +8,52 @@ import (
 	"github.com/kapitanov/ucode/internal/iface"
 	"github.com/kapitanov/ucode/internal/llm"
 	"github.com/kapitanov/ucode/internal/runner"
+	"github.com/kapitanov/ucode/internal/sandbox"
 	"github.com/kapitanov/ucode/internal/tui"
 )
 
+var (
+	providerURL, providerAPIKey, providerModel string
+	enableSandbox                              bool
+)
+
+func init() {
+	flag.StringVar(&providerURL, "url", "", "llm provider URL (defaults to $OPENROUTER_URL)")
+	flag.StringVar(&providerAPIKey, "key", "", "llm provider api key (defaults to $OPENROUTER_API_KEY)")
+	flag.StringVar(&providerModel, "model", "", "llm provider model (defaults to $OPENROUTER_MODEL)")
+	flag.BoolVar(&enableSandbox, "sandbox", false, "enable sandbox mode")
+}
+
 func main() {
+	flag.Parse()
+
+	configureWD()
 	llmConn, defaultModel := configureLLM()
 
 	agentsUI := tui.New(llmConn)
 	defer agentsUI.Close()
 
+	agentsSandbox := configureSandbox(agentsUI)
 	agentsRegistry := agents.New(llmConn, defaultModel)
 
-	runner.RunAgent(agentsRegistry, agentsUI, agentsRegistry.Default())
+	runner.RunAgent(agentsSandbox, agentsRegistry, agentsUI, agentsRegistry.Default())
+}
+
+func configureWD() {
+	if flag.NArg() > 2 {
+		flag.Usage()
+		os.Exit(1)
+	}
+
+	if flag.NArg() == 1 {
+		err := os.Chdir(flag.Arg(0))
+		if err != nil {
+			panic(err)
+		}
+	}
 }
 
 func configureLLM() (iface.LLM, string) {
-	var providerURL, providerAPIKey, providerModel string
-	flag.StringVar(&providerURL, "url", "", "llm provider URL (defaults to $OPENROUTER_URL)")
-	flag.StringVar(&providerAPIKey, "key", "", "llm provider api key (defaults to $OPENROUTER_API_KEY)")
-	flag.StringVar(&providerModel, "model", "", "llm provider model (defaults to $OPENROUTER_MODEL)")
-	flag.Parse()
-
 	if providerURL == "" {
 		providerURL = os.Getenv("OPENROUTER_URL")
 	}
@@ -44,4 +69,12 @@ func configureLLM() (iface.LLM, string) {
 	}
 
 	return llm.NewOpenRouterClient(providerURL, providerAPIKey), providerModel
+}
+
+func configureSandbox(agentsUI iface.UI) iface.Sandbox {
+	if enableSandbox {
+		return sandbox.Isolated()
+	}
+
+	return sandbox.Direct(agentsUI)
 }

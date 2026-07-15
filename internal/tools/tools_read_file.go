@@ -2,10 +2,8 @@ package tools
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/kapitanov/ucode/internal/iface"
-	"github.com/kapitanov/ucode/internal/tools/guardrails"
 )
 
 func init() {
@@ -26,7 +24,7 @@ func readFileToolExecute(ctx iface.Context, args readFileToolArgs) (readFileTool
 	toolCall := readFileToolDescribe(args)
 
 	callToken := ctx.ToolCall(toolCall)
-	result, err := readFileToolExecuteImpl(args)
+	result, err := readFileToolExecuteImpl(ctx, args)
 	if err != nil {
 		callToken.Failure(err.Error())
 		return readFileToolResult{}, err
@@ -43,16 +41,8 @@ func readFileToolDescribe(args readFileToolArgs) iface.ToolCall {
 	}
 }
 
-func readFileToolExecuteImpl(args readFileToolArgs) (readFileToolResult, error) {
-	path, err := guardrails.NormalizePath(args.Path)
-	if err != nil {
-		return readFileToolResult{}, err
-	}
-	if !guardrails.IsAllowedPath(path) {
-		return readFileToolResult{}, fmt.Errorf("access to path %q is not allowed", path)
-	}
-
-	data, err := os.ReadFile(path)
+func readFileToolExecuteImpl(ctx iface.Context, args readFileToolArgs) (readFileToolResult, error) {
+	data, err := ctx.Sandbox().ReadFile(args.Path)
 	if err != nil {
 		return readFileToolResult{}, fmt.Errorf("failed to read file %q: %v", args.Path, err)
 	}

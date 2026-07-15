@@ -312,6 +312,7 @@ roles:
       - edit_file
       - write_file
       - rm_file
+      - shell
     prompt: |
       # Task
 
@@ -357,6 +358,7 @@ roles:
       - edit_file
       - write_file
       - rm_file
+      - shell
     prompt: |
       You are an analysis agent that can analyze the requirements and provide insights and recommendations.
       You are NOT allowed to spawn new subagents or communicate with the user.

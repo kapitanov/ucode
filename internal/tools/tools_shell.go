@@ -1,12 +1,10 @@
 package tools
 
 import (
-	"errors"
 	"fmt"
-	"os/exec"
+	"strings"
 
 	"github.com/kapitanov/ucode/internal/iface"
-	"github.com/kapitanov/ucode/internal/tools/guardrails"
 )
 
 func init() {
@@ -27,13 +25,13 @@ type (
 func shellToolExecute(ctx iface.Context, args shellToolArgs) (shellToolResult, error) {
 	toolCall := shellToolDescribe(args)
 
-	if !guardrails.IsAllowedCommand(ctx, args.Command) {
+	if !shellToolIsAllowedCommand(ctx, args.Command) {
 		ctx.ToolCall(toolCall).Failure("shell command execution not allowed")
 		return shellToolResult{}, fmt.Errorf("shell command execution not allowed")
 	}
 
 	callToken := ctx.ToolCall(toolCall)
-	result, err := shellToolExecuteImpl(args)
+	result, err := shellToolExecuteImpl(ctx, args)
 	if err != nil {
 		callToken.Failure(err.Error())
 		return shellToolResult{}, err
@@ -43,6 +41,20 @@ func shellToolExecute(ctx iface.Context, args shellToolArgs) (shellToolResult, e
 	return result, nil
 }
 
+func shellToolIsAllowedCommand(ctx iface.Context, command string) bool {
+	if !ctx.Sandbox().RequireManualValidation() {
+		return true
+	}
+
+	lines := strings.Split(command, "\n")
+	for i := range lines {
+		lines[i] = fmt.Sprintf("| %s", lines[i])
+	}
+	question := fmt.Sprintf("Do you want to allow the following command to be executed?\n%s", strings.Join(lines, "\n"))
+
+	return ctx.Ask(question, []string{"Allow", "Forbid"}) == 0
+}
+
 func shellToolDescribe(args shellToolArgs) iface.ToolCall {
 	return iface.ToolCall{
 		Type: "SHELL",
@@ -50,22 +62,14 @@ func shellToolDescribe(args shellToolArgs) iface.ToolCall {
 	}
 }
 
-func shellToolExecuteImpl(args shellToolArgs) (shellToolResult, error) {
-	cmd := exec.Command("sh", "-c", args.Command)
-	output, err := cmd.CombinedOutput()
+func shellToolExecuteImpl(ctx iface.Context, args shellToolArgs) (shellToolResult, error) {
+	output, exitCode, err := ctx.Sandbox().ShellCommand(args.Command)
 	if err != nil {
-		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-			return shellToolResult{
-				Output:   string(output),
-				ExitCode: exitErr.ExitCode(),
-			}, nil
-		}
-
-		return shellToolResult{}, fmt.Errorf("command failed with error: %s\nOutput: %s", err.Error(), string(output))
+		return shellToolResult{}, err
 	}
 
 	return shellToolResult{
-		Output:   string(output),
-		ExitCode: 0,
+		Output:   output,
+		ExitCode: exitCode,
 	}, nil
 }

@@ -1,11 +1,7 @@
 package tools
 
 import (
-	"fmt"
-	"os"
-
 	"github.com/kapitanov/ucode/internal/iface"
-	"github.com/kapitanov/ucode/internal/tools/guardrails"
 )
 
 func init() {
@@ -17,14 +13,16 @@ type (
 		Path string `json:"path" jsonschema_description:"path to the file to remove"`
 	}
 
-	rmFileToolResult struct{}
+	rmFileToolResult struct {
+		Removed bool `json:"removed" jsonschema_description:"whether the file was removed successfully"`
+	}
 )
 
 func rmFileToolExecute(ctx iface.Context, args rmFileToolArgs) (rmFileToolResult, error) {
 	toolCall := rmFileToolDescribe(args)
 
 	callToken := ctx.ToolCall(toolCall)
-	result, err := rmFileToolExecuteImpl(args)
+	result, err := rmFileToolExecuteImpl(ctx, args)
 	if err != nil {
 		callToken.Failure(err.Error())
 		return rmFileToolResult{}, err
@@ -41,19 +39,11 @@ func rmFileToolDescribe(args rmFileToolArgs) iface.ToolCall {
 	}
 }
 
-func rmFileToolExecuteImpl(args rmFileToolArgs) (rmFileToolResult, error) {
-	path, err := guardrails.NormalizePath(args.Path)
+func rmFileToolExecuteImpl(ctx iface.Context, args rmFileToolArgs) (rmFileToolResult, error) {
+	err := ctx.Sandbox().RemoveFile(args.Path)
 	if err != nil {
 		return rmFileToolResult{}, err
 	}
-	if !guardrails.IsAllowedPath(path) {
-		return rmFileToolResult{}, fmt.Errorf("access to path %q is not allowed", path)
-	}
 
-	err = os.Remove(path)
-	if err != nil {
-		return rmFileToolResult{}, fmt.Errorf("failed to remove file %q: %v", args.Path, err)
-	}
-
-	return rmFileToolResult{}, nil
+	return rmFileToolResult{Removed: true}, nil
 }
