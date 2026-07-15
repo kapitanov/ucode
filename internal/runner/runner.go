@@ -14,6 +14,7 @@ func RunAgent(sandbox iface.Sandbox, agents iface.Agents, ui iface.UI, agent ifa
 		plan:      newPersistedPlanStorage(),
 		memory:    newMemoryStorage(),
 		agentName: agent.Name(),
+		trace:     newTracer(agent.Name()),
 	}
 	ui.SetPlan(ctx.Plan())
 	ui.SetMemory(ctx.Memory())
@@ -30,41 +31,63 @@ type contextImpl struct {
 	memory           *memoryStorage
 	inputStream      []string
 	shouldPrintUsage bool
+	trace            *tracer
 }
 
 // Input
 func (c *contextImpl) UI() iface.UI { return c.ui }
 
 func (c *contextImpl) Prompt() string {
+	var str string
 	if c.inputStream == nil {
 		if c.shouldPrintUsage {
 			c.ui.Usage()
 		}
 		c.shouldPrintUsage = true
-		return c.ui.Prompt()
+		str = c.ui.Prompt()
+	} else {
+		if len(c.inputStream) == 0 {
+			return ""
+		}
+
+		str = c.inputStream[0]
+		c.inputStream = c.inputStream[1:]
 	}
 
-	if len(c.inputStream) == 0 {
-		return ""
-	}
-
-	str := c.inputStream[0]
-	c.inputStream = c.inputStream[1:]
-
+	c.trace.Prompt(str)
 	return str
 }
 
-func (c *contextImpl) Ask(question string, options []string) int { return c.ui.Ask(question, options) }
-func (c *contextImpl) Thinking() iface.ThinkingToken             { return c.ui.Thinking() }
+func (c *contextImpl) Ask(question string, options []string) int {
+	c.trace.Ask(question, options)
+	answer := c.ui.Ask(question, options)
+	c.trace.Answer(options[answer])
+	return answer
+}
+func (c *contextImpl) Thinking() iface.ThinkingToken { return c.ui.Thinking() }
 
 // Output
 func (c *contextImpl) Response(response string) {
 	_, _ = c.output.WriteString(response)
 	_, _ = c.output.WriteString("\n")
+	c.trace.Response(response)
 	c.ui.Response(c.agentName, response)
 }
-func (c *contextImpl) Reasoning(response string) { c.ui.Reasoning(c.agentName, response) }
-func (c *contextImpl) Refusal(response string)   { c.ui.Refusal(c.agentName, response) }
+func (c *contextImpl) Reasoning(response string) {
+	c.trace.Reasoning(response)
+	c.ui.Reasoning(c.agentName, response)
+}
+func (c *contextImpl) Refusal(response string) {
+	c.trace.Refusal(response)
+	c.ui.Refusal(c.agentName, response)
+}
+
+func (c *contextImpl) NotifyToolCall(name, args string) {
+	c.trace.ToolCall(name, args)
+}
+func (c *contextImpl) NotifyToolCallResult(result string) {
+	c.trace.ToolCallResult(result)
+}
 func (c *contextImpl) ToolCall(toolCall iface.ToolCall) iface.ToolCallToken {
 	return c.ui.ToolCall(toolCall)
 }
@@ -131,6 +154,7 @@ func (c *contextImpl) RunSubagent(agent iface.Agent, request string) (string, er
 		memory:      c.memory,
 		agentName:   agent.Name(),
 		inputStream: []string{request},
+		trace:       c.trace.New(agent.Name()),
 	}
 
 	err := agent.Run(ctx)

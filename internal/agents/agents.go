@@ -123,6 +123,9 @@ func newAgentImpl(name, role, prompt, model string, forbiddenTools []string, llm
 				openrouter.SystemMessage(prompt),
 			},
 			Tools: ts,
+			Reasoning: &openrouter.ChatCompletionReasoning{
+				Enabled: new(true),
+			},
 		},
 		tools:       ts,
 		maxMessages: DefaultMaxMessages,
@@ -205,7 +208,9 @@ func (a *agentImpl) runOne(c iface.Context) error {
 	for _, toolCall := range msg.ToolCalls {
 		done = false
 
-		result := tools.Execute(c, toolCall.Function.Name, toolCall.Function.Arguments)
+		c.NotifyToolCall(toolCall.Function.Name, toolCall.Function.Arguments)
+		result := a.executeTool(c, toolCall)
+		c.NotifyToolCallResult(result.String())
 
 		a.request.Messages = append(a.request.Messages, openrouter.ToolMessage(toolCall.ID, result.String()))
 	}
@@ -215,4 +220,24 @@ func (a *agentImpl) runOne(c iface.Context) error {
 	}
 
 	return errDone
+}
+
+func (a *agentImpl) executeTool(c iface.Context, toolCall openrouter.ToolCall) tools.ToolResult {
+	if !a.canExecuteTool(c, toolCall) {
+		return tools.ToolResult{
+			Error: fmt.Errorf("tool %q is not available for this agent", toolCall.Function.Name),
+		}
+	}
+
+	result := tools.Execute(c, toolCall.Function.Name, toolCall.Function.Arguments)
+	return result
+}
+
+func (a *agentImpl) canExecuteTool(c iface.Context, toolCall openrouter.ToolCall) bool {
+	for _, t := range a.tools {
+		if t.Function.Name == toolCall.Function.Name {
+			return true
+		}
+	}
+	return false
 }

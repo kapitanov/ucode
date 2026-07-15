@@ -32,6 +32,8 @@ type Context interface {
 	Response(response string)
 	Reasoning(response string)
 	Refusal(response string)
+	NotifyToolCall(name, args string)
+	NotifyToolCallResult(result string)
 	ToolCall(toolCall ToolCall) ToolCallToken
 
 	// Planning

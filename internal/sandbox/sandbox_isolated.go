@@ -92,6 +92,9 @@ func (s *isolatedSandbox) listFilesHelper(dir, typeFilter string) ([]string, err
 		if line == "" {
 			continue
 		}
+		if !guardrails.IsAllowedPath(line) {
+			continue
+		}
 		entries = append(entries, line)
 	}
 
@@ -229,10 +232,6 @@ func (s *isolatedSandbox) buildContainer() {
 	s.containerImage = strings.TrimSpace(string(output))
 
 	tui.Printf("%% → %q\n", s.containerImage)
-}
-
-func (s *isolatedSandbox) execf(format string, args ...any) ([]byte, int, error) {
-	return s.exec(fmt.Sprintf(format, args...))
 }
 
 func (s *isolatedSandbox) exec(command string) ([]byte, int, error) {
