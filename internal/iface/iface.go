@@ -104,6 +104,16 @@ type Memory struct {
 	Items []MemoryItem
 }
 
+func (m Memory) Get(key string) string {
+	for _, item := range m.Items {
+		if item.Key == key {
+			return item.Value
+		}
+	}
+
+	return ""
+}
+
 type MemoryItem struct {
 	Key   string
 	Value string

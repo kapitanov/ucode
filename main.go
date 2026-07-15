@@ -14,7 +14,7 @@ import (
 
 var (
 	providerURL, providerAPIKey, providerModel string
-	enableSandbox                              bool
+	enableSandbox, printReasoning              bool
 )
 
 func init() {
@@ -22,6 +22,7 @@ func init() {
 	flag.StringVar(&providerAPIKey, "key", "", "llm provider api key (defaults to $OPENROUTER_API_KEY)")
 	flag.StringVar(&providerModel, "model", "", "llm provider model (defaults to $OPENROUTER_MODEL)")
 	flag.BoolVar(&enableSandbox, "sandbox", false, "enable sandbox mode")
+	flag.BoolVar(&printReasoning, "reasoning", false, "enable reasoning output")
 }
 
 func main() {
@@ -30,7 +31,7 @@ func main() {
 	configureWD()
 	llmConn, defaultModel := configureLLM()
 
-	agentsUI := tui.New(llmConn)
+	agentsUI := tui.New(llmConn, printReasoning)
 	defer agentsUI.Close()
 
 	agentsSandbox := configureSandbox(agentsUI)

@@ -1,6 +1,8 @@
 package tools
 
 import (
+	"strings"
+
 	"github.com/kapitanov/ucode/internal/iface"
 )
 
@@ -9,7 +11,9 @@ func init() {
 }
 
 type (
-	readMemoryToolArgs struct{}
+	readMemoryToolArgs struct {
+		Keys []string `json:"keys" jsonschema_description:"memory item keys"`
+	}
 
 	readMemoryToolResult struct {
 		Items []readMemoryToolResultItem `json:"items" jsonschema_description:"memory items"`
@@ -35,23 +39,26 @@ func readMemoryToolExecute(ctx iface.Context, args readMemoryToolArgs) (readMemo
 	return result, nil
 }
 
-func readMemoryToolDescribe(_ readMemoryToolArgs) iface.ToolCall {
+func readMemoryToolDescribe(args readMemoryToolArgs) iface.ToolCall {
 	return iface.ToolCall{
-		Type: "READ_MEMORY",
-		Args: "",
+		Type: "MEMORY:READ",
+		Args: strings.Join(args.Keys, ","),
 	}
 }
 
-func readMemoryExecuteImpl(ctx iface.Context, _ readMemoryToolArgs) (readMemoryToolResult, error) {
+func readMemoryExecuteImpl(ctx iface.Context, args readMemoryToolArgs) (readMemoryToolResult, error) {
 	memory := ctx.Memory()
 
 	result := readMemoryToolResult{
-		Items: make([]readMemoryToolResultItem, len(memory.Items)),
+		Items: []readMemoryToolResultItem{},
 	}
-	for i := range memory.Items {
-		result.Items[i] = readMemoryToolResultItem{
-			Key:   memory.Items[i].Key,
-			Value: memory.Items[i].Value,
+	for _, key := range args.Keys {
+		value := memory.Get(key)
+		if value != "" {
+			result.Items = append(result.Items, readMemoryToolResultItem{
+				Key:   key,
+				Value: value,
+			})
 		}
 	}
 

@@ -38,7 +38,7 @@ func readPlanToolExecute(ctx iface.Context, args readPlanToolArgs) (readPlanTool
 
 func readPlanToolDescribe(_ readPlanToolArgs) iface.ToolCall {
 	return iface.ToolCall{
-		Type: "READ_PLAN",
+		Type: "PLAN:READ",
 		Args: "",
 	}
 }

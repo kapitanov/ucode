@@ -43,15 +43,17 @@ func Printf(format string, a ...any) {
 }
 
 type UI struct {
-	plan   iface.Plan
-	memory *iface.Memory
-	llm    iface.LLM
+	plan           iface.Plan
+	memory         *iface.Memory
+	llm            iface.LLM
+	printReasoning bool
 }
 
-func New(llm iface.LLM) *UI {
+func New(llm iface.LLM, printReasoning bool) *UI {
 	return &UI{
-		memory: &iface.Memory{},
-		llm:    llm,
+		memory:         &iface.Memory{},
+		llm:            llm,
+		printReasoning: printReasoning,
 	}
 }
 
@@ -173,6 +175,10 @@ func (t *thinkingToken) Done() {
 }
 
 func (u *UI) Reasoning(agentName, response string) {
+	if !u.printReasoning {
+		return
+	}
+
 	u.printAgentResponse(agentName, response, reasoningAgentNameStyle, reasoningMessageStyle)
 }
 

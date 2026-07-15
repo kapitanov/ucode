@@ -43,12 +43,12 @@ func (u *UI) printPlan() {
 	width := len(fmt.Sprintf("%d", len(u.plan.Items)+1))
 
 	for _, item := range u.plan.Items {
-		status := " "
+		status := ""
 		if item.Done {
-			status = "x"
+			status = "✅ "
 		}
 
-		_, _ = fmt.Fprintf(color.Output, "  %s) [%s] %s\n", outputItemStyle(fmt.Sprintf("%*d", width, item.Index)), status, outputItemStyle(item.Title))
+		_, _ = fmt.Fprintf(color.Output, "  %s) %s%s\n", outputItemStyle(fmt.Sprintf("%*d", width, item.Index)), status, outputItemStyle(item.Title))
 	}
 }
 

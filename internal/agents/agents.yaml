@@ -165,7 +165,7 @@ shared_prompt: |
   - Use the `grep_files` function to search for text in files in the workspace.
   - Use the `list_files` function to list files in a directory in the workspace.
   - Use the `read_file` function to read the contents of a file in the workspace.
-  - Use the `read_memory` and `write_memory` functions to read and write to the agent's memory.
+  - Use the `list_memory`, `read_memory` and `write_memory` functions to read and write to the agent's memory.
   - Use the `shell` function to run shell commands in the workspace.
   - Use the `write_file` function to write new files in the workspace.
   - Use the `rm_file` function to remove files in the workspace.

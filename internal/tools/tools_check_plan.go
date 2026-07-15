@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/kapitanov/ucode/internal/iface"
 )
@@ -12,7 +13,7 @@ func init() {
 
 type (
 	checkPlanToolArgs struct {
-		Index int `json:"index" jsonschema_description:"plan item index to check as completed"`
+		Indices []int `json:"indices" jsonschema_description:"plan item indices to check as completed"`
 	}
 
 	checkPlanToolResult struct {
@@ -38,14 +39,22 @@ func checkPlanToolExecute(ctx iface.Context, args checkPlanToolArgs) (checkPlanT
 }
 
 func checkPlanToolDescribe(args checkPlanToolArgs) iface.ToolCall {
+	var indices []string
+	for _, index := range args.Indices {
+		indices = append(indices, fmt.Sprintf("%v", index))
+	}
+
 	return iface.ToolCall{
-		Type: "CHECK_PLAN",
-		Args: fmt.Sprintf("#%d", args.Index),
+		Type: "PLAN:CHECK",
+		Args: strings.Join(indices, ","),
 	}
 }
 
 func checkPlanExecuteImpl(ctx iface.Context, args checkPlanToolArgs) (checkPlanToolResult, error) {
-	plan := ctx.CheckPlanItem(args.Index)
+	plan := ctx.Plan()
+	for _, index := range args.Indices {
+		plan = ctx.CheckPlanItem(index)
+	}
 
 	result := checkPlanToolResult{
 		Items: make([]checkPlanToolResultItem, len(plan.Items)),

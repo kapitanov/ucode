@@ -2,6 +2,7 @@ package tools
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/kapitanov/ucode/internal/iface"
 	"github.com/pyk/byten"
@@ -13,12 +14,11 @@ func init() {
 
 type (
 	writeMemoryToolArgs struct {
-		Key   string `json:"key"   jsonschema_description:"memory item key"`
-		Value string `json:"value" jsonschema_description:"memory item value"`
+		Items []writeMemoryToolResultItem `json:"items" jsonschema_description:"memory items to write"`
 	}
 
 	writeMemoryToolResult struct {
-		Items []writeMemoryToolResultItem `json:"items" jsonschema_description:"memory items"`
+		Keys []string `json:"items" jsonschema_description:"memory item keys"`
 	}
 
 	writeMemoryToolResultItem struct {
@@ -42,23 +42,30 @@ func writeMemoryToolExecute(ctx iface.Context, args writeMemoryToolArgs) (writeM
 }
 
 func writeMemoryToolDescribe(args writeMemoryToolArgs) iface.ToolCall {
+	var keys []string
+	totalSize := 0
+	for _, item := range args.Items {
+		keys = append(keys, item.Key)
+		totalSize += len(item.Value)
+	}
+
 	return iface.ToolCall{
-		Type: "WRITE_MEMORY",
-		Args: fmt.Sprintf("%s %s", args.Key, byten.Size(int64(len(args.Value)))),
+		Type: "MEMORY:WRITE",
+		Args: fmt.Sprintf("%s %s", strings.Join(keys, ","), byten.Size(int64(totalSize))),
 	}
 }
 
 func writeMemoryExecuteImpl(ctx iface.Context, args writeMemoryToolArgs) (writeMemoryToolResult, error) {
-	memory := ctx.WriteMemory(args.Key, args.Value)
+	memory := ctx.Memory()
+	for _, item := range args.Items {
+		memory = ctx.WriteMemory(item.Key, item.Value)
+	}
 
 	result := writeMemoryToolResult{
-		Items: make([]writeMemoryToolResultItem, len(memory.Items)),
+		Keys: make([]string, len(memory.Items)),
 	}
 	for i := range memory.Items {
-		result.Items[i] = writeMemoryToolResultItem{
-			Key:   memory.Items[i].Key,
-			Value: memory.Items[i].Value,
-		}
+		result.Keys[i] = memory.Items[i].Key
 	}
 
 	return result, nil

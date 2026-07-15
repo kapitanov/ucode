@@ -26,7 +26,7 @@ func clearPlanToolExecute(ctx iface.Context, args clearPlanToolArgs) (clearPlanT
 
 func clearPlanToolDescribe(_ clearPlanToolArgs) iface.ToolCall {
 	return iface.ToolCall{
-		Type: "CLEAR_PLAN",
+		Type: "PLAN:CLEAR",
 		Args: "",
 	}
 }

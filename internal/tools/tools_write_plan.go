@@ -50,7 +50,7 @@ func writePlanToolDescribe(args writePlanToolArgs) iface.ToolCall {
 	}
 
 	return iface.ToolCall{
-		Type: "WRITE_PLAN",
+		Type: "PLAN:WRITE",
 		Args: strings.Join(items, ", "),
 	}
 }

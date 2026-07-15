@@ -2,7 +2,6 @@ package tools
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/kapitanov/ucode/internal/etc/difftool"
 	"github.com/kapitanov/ucode/internal/iface"
@@ -42,7 +41,7 @@ func editFileToolDescribe(args editFileToolArgs) iface.ToolCall {
 
 	return iface.ToolCall{
 		Type: "EDIT",
-		Args: fmt.Sprintf("%s (+%d -%d)\n%s", args.Path, preview.Added, preview.Removed, strings.Join(preview.Lines, "\n")),
+		Args: fmt.Sprintf("%s (+%d -%d)", args.Path, preview.Added, preview.Removed),
 	}
 }
 
