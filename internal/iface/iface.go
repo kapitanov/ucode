@@ -2,13 +2,14 @@ package iface
 
 import (
 	"context"
+	"time"
 
 	"github.com/revrost/go-openrouter"
 )
 
 type LLM interface {
 	Usage() openrouter.Usage
-	CreateChatCompletion(ctx context.Context, req openrouter.ChatCompletionRequest) (*openrouter.ChatCompletionResponse, error)
+	CreateChatCompletion(ctx context.Context, req openrouter.ChatCompletionRequest, ui UI) (*openrouter.ChatCompletionResponse, error)
 }
 
 type Agents interface {
@@ -57,6 +58,7 @@ type UI interface {
 	Prompt() string
 	Ask(question string, options []string) int
 	Thinking() ThinkingToken
+	RateLimit(waitDuration time.Duration)
 
 	// Output
 	Response(agentName, response string)

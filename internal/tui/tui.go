@@ -168,6 +168,10 @@ func (u *UI) Thinking() iface.ThinkingToken {
 	}
 }
 
+func (u *UI) RateLimit(waitDuration time.Duration) {
+	_, _ = fmt.Fprintf(color.Output, "%s\n", errorOutputItemStyle(fmt.Sprintf("Rate limit exceeded. Waiting for %s...", waitDuration)))
+}
+
 type thinkingToken struct {
 	spinner *spinner.Spinner
 }

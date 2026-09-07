@@ -180,7 +180,7 @@ func (a *agentImpl) runOne(c iface.Context) error {
 	defer cancel()
 
 	thinking := c.Thinking()
-	response, err := a.llm.CreateChatCompletion(ctx, a.request)
+	response, err := a.llm.CreateChatCompletion(ctx, a.request, c.UI())
 	thinking.Done()
 	if err != nil {
 		return err
