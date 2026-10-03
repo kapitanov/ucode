@@ -2,9 +2,12 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/kapitanov/ucode/internal/iface"
@@ -16,6 +19,10 @@ const maxRateLimitRetries = 3
 
 // fallbackRateLimitWait is used when X-RateLimit-Reset is absent or unparseable.
 const fallbackRateLimitWait = 60 * time.Second
+
+// maxRateLimitWait caps a single retry wait so a far-future X-RateLimit-Reset
+// (e.g. a daily free-tier quota) can't stall a call past the caller's context deadline.
+const maxRateLimitWait = 2 * time.Minute
 
 // emptyChoicesRetryWait is used before retrying a response that came back with no choices
 // (observed with some providers/free models on transient upstream hiccups).
@@ -41,6 +48,8 @@ func NewOpenRouterClient(apiURL, apiKey string) *OpenRouterClient {
 func (c *OpenRouterClient) Usage() openrouter.Usage { return c.usage }
 
 func (c *OpenRouterClient) CreateChatCompletion(ctx context.Context, req openrouter.ChatCompletionRequest, ui iface.UI) (*openrouter.ChatCompletionResponse, error) {
+	logRequest(req)
+
 	for attempt := range maxRateLimitRetries {
 		resp, err := c.client.CreateChatCompletion(ctx, req)
 		if err != nil {
@@ -50,7 +59,7 @@ func (c *OpenRouterClient) CreateChatCompletion(ctx context.Context, req openrou
 					return nil, fmt.Errorf("rate limit exceeded after %d retries: %w", maxRateLimitRetries, err)
 				}
 
-				sleepDuration := timeUntilReset(apiErr, fallbackRateLimitWait)
+				sleepDuration := min(timeUntilReset(apiErr, fallbackRateLimitWait), maxRateLimitWait)
 				ui.RateLimit(sleepDuration)
 
 				if sleepErr := sleepUntilReset(ctx, sleepDuration); sleepErr != nil {
@@ -60,6 +69,8 @@ func (c *OpenRouterClient) CreateChatCompletion(ctx context.Context, req openrou
 			}
 			return nil, err
 		}
+
+		logResponse(resp)
 
 		if len(resp.Choices) == 0 {
 			if attempt == maxRateLimitRetries-1 {
@@ -118,4 +129,33 @@ func sleepUntilReset(ctx context.Context, sleepDuration time.Duration) error {
 	case <-ctx.Done():
 		return ctx.Err()
 	}
+}
+
+func logRequest(req openrouter.ChatCompletionRequest) {
+	logWriteFile("llm_request.json", req)
+}
+
+func logResponse(req openrouter.ChatCompletionResponse) {
+	logWriteFile("llm_response.json", req)
+}
+
+func logWriteFile(name string, value any) {
+	wd, err := filepath.EvalSymlinks(".")
+	if err != nil {
+		return
+	}
+
+	dir := filepath.Join(wd, ".agents")
+	err = os.MkdirAll(dir, 0755)
+	if err != nil {
+		return
+	}
+
+	bs, err := json.MarshalIndent(value, "", "  ")
+	if err != nil {
+		return
+	}
+
+	path := filepath.Join(dir, name)
+	_ = os.WriteFile(path, bs, 0644)
 }

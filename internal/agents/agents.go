@@ -153,7 +153,10 @@ func (a *agentImpl) runIter(ctx iface.Context) error {
 var errDone = errors.New("done")
 
 func (a *agentImpl) runOne(c iface.Context) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	// Must comfortably cover the LLM client's own retry/backoff waits (rate-limit and
+	// empty-choices retries), or a legitimate wait gets cut off by ctx.Done() and
+	// surfaces as "context deadline exceeded" instead of a real response.
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 
 	thinking := c.Thinking()
@@ -170,15 +173,23 @@ func (a *agentImpl) runOne(c iface.Context) error {
 	a.request.Messages = append(a.request.Messages, msg)
 
 	if msg.Reasoning != nil {
-		c.Reasoning(*msg.Reasoning)
+		text := *msg.Reasoning
+		text = strings.Trim(text, " \n\r\t")
+		c.Reasoning(text)
 	}
 
 	if msg.Content.Text != "" {
-		c.Response(msg.Content.Text)
+		text := msg.Content.Text
+		text = strings.Trim(text, " \n\r\t")
+		if text != "" {
+			c.Response(text)
+		}
 	}
 
 	if msg.Refusal != "" {
-		c.Refusal(msg.Refusal)
+		text := msg.Refusal
+		text = strings.Trim(text, " \n\r\t")
+		c.Refusal(text)
 	}
 
 	done := true
