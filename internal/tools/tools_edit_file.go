@@ -7,8 +7,10 @@ import (
 	"github.com/kapitanov/ucode/internal/iface"
 )
 
+const EditFile Name = "edit_file"
+
 func init() {
-	register("edit_file", "edit a file (non-existing file will be created)", editFileToolExecute)
+	register(EditFile, "edit a file (non-existing file will be created)", editFileToolExecute)
 }
 
 type (

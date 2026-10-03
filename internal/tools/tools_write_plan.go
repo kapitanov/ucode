@@ -7,8 +7,10 @@ import (
 	"github.com/kapitanov/ucode/internal/iface"
 )
 
+const WritePlan Name = "write_plan"
+
 func init() {
-	register("write_plan", "write agent's plan (existing plan items will be preserved)", writePlanToolExecute)
+	register(WritePlan, "write agent's plan (existing plan items will be preserved)", writePlanToolExecute)
 }
 
 type (

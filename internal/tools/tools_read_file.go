@@ -6,8 +6,10 @@ import (
 	"github.com/kapitanov/ucode/internal/iface"
 )
 
+const ReadFile Name = "read_file"
+
 func init() {
-	register("read_file", "read a file", readFileToolExecute)
+	register(ReadFile, "read a file", readFileToolExecute)
 }
 
 type (

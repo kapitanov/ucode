@@ -6,8 +6,10 @@ import (
 	"github.com/kapitanov/ucode/internal/iface"
 )
 
+const ReadMemory Name = "read_memory"
+
 func init() {
-	register("read_memory", "read agent's memory", readMemoryToolExecute)
+	register(ReadMemory, "read agent's memory", readMemoryToolExecute)
 }
 
 type (

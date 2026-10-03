@@ -13,7 +13,7 @@ type LLM interface {
 }
 
 type Agents interface {
-	ByRole(role string) Agent
+	Select(name string) Agent
 	Default() Agent
 }
 
@@ -70,6 +70,8 @@ type UI interface {
 	SetPlan(plan *Plan)
 	PrintPlan()
 	SetMemory(memory *Memory)
+
+	Close()
 }
 
 type ThinkingToken interface {

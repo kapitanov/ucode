@@ -6,13 +6,15 @@ import (
 	"github.com/kapitanov/ucode/internal/iface"
 )
 
+const RunSubagent Name = "run_subagent"
+
 func init() {
-	register("run_subagent", "run a subagent", runSubagentToolExecute)
+	register(RunSubagent, "run a subagent", runSubagentToolExecute)
 }
 
 type (
 	runSubagentToolArgs struct {
-		Role    string `json:"role"    jsonschema_description:"subagent role, any of: 'reviewer', 'coder', 'tester'"`
+		Agent   string `json:"agent"    jsonschema_description:"subagent name"`
 		Request string `json:"request" jsonschema_description:"subagent request"`
 	}
 
@@ -22,14 +24,14 @@ type (
 )
 
 func runSubagentToolExecute(ctx iface.Context, args runSubagentToolArgs) (runSubagentToolResult, error) {
-	agent := ctx.Agents().ByRole(args.Role)
+	agent := ctx.Agents().Select(args.Agent)
 	if agent == nil {
-		return runSubagentToolResult{}, fmt.Errorf("no such agent: %q", args.Role)
+		return runSubagentToolResult{}, fmt.Errorf("no such agent: %q", args.Agent)
 	}
 
 	response, err := ctx.RunSubagent(agent, args.Request)
 	if err != nil {
-		ctx.ToolCall(iface.ToolCall{Type: "SUBAGENT", Args: args.Role}).Failure(err.Error())
+		ctx.ToolCall(iface.ToolCall{Type: "SUBAGENT", Args: args.Agent}).Failure(err.Error())
 	}
 	return runSubagentToolResult{Response: response}, err
 }

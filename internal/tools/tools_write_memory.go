@@ -8,8 +8,10 @@ import (
 	"github.com/pyk/byten"
 )
 
+const WriteMemory Name = "write_memory"
+
 func init() {
-	register("write_memory", "write agent's memory", writeMemoryToolExecute)
+	register(WriteMemory, "write agent's memory", writeMemoryToolExecute)
 }
 
 type (

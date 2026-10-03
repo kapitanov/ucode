@@ -4,8 +4,10 @@ import (
 	"github.com/kapitanov/ucode/internal/iface"
 )
 
+const ClearPlan Name = "clear_plan"
+
 func init() {
-	register("clear_plan", "clear agent's plan", clearPlanToolExecute)
+	register(ClearPlan, "clear agent's plan", clearPlanToolExecute)
 }
 
 type (

@@ -4,8 +4,10 @@ import (
 	"github.com/kapitanov/ucode/internal/iface"
 )
 
+const RemoveFile Name = "rm_file"
+
 func init() {
-	register("rm_file", "remove a file", rmFileToolExecute)
+	register(RemoveFile, "remove a file", rmFileToolExecute)
 }
 
 type (

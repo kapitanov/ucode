@@ -7,8 +7,10 @@ import (
 	"github.com/kapitanov/ucode/internal/iface"
 )
 
+const Shell Name = "shell"
+
 func init() {
-	register("shell", "execute a shell command", shellToolExecute)
+	register(Shell, "execute a shell command", shellToolExecute)
 }
 
 type (

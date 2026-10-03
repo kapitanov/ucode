@@ -4,8 +4,10 @@ import (
 	"github.com/kapitanov/ucode/internal/iface"
 )
 
+const ReadPlan Name = "read_plan"
+
 func init() {
-	register("read_plan", "read agent's plan", readPlanToolExecute)
+	register(ReadPlan, "read agent's plan", readPlanToolExecute)
 }
 
 type (

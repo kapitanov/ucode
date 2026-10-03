@@ -7,8 +7,10 @@ import (
 	"github.com/kapitanov/ucode/internal/iface"
 )
 
+const AskUser Name = "ask_user"
+
 func init() {
-	register("ask_user", "ask user a question and let him select one of predefined options", askUserToolExecute)
+	register(AskUser, "ask user a question and let him select one of predefined options", askUserToolExecute)
 }
 
 type (

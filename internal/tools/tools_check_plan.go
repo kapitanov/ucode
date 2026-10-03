@@ -7,8 +7,10 @@ import (
 	"github.com/kapitanov/ucode/internal/iface"
 )
 
+const CheckPlan Name = "check_plan"
+
 func init() {
-	register("check_plan", "check agent's plan's item as completed", checkPlanToolExecute)
+	register(CheckPlan, "check agent's plan's item as completed", checkPlanToolExecute)
 }
 
 type (

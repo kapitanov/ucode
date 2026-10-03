@@ -4,8 +4,10 @@ import (
 	"github.com/kapitanov/ucode/internal/iface"
 )
 
+const ListMemory Name = "list_memory"
+
 func init() {
-	register("list_memory", "list agent's memory keys", listMemoryToolExecute)
+	register(ListMemory, "list agent's memory keys", listMemoryToolExecute)
 }
 
 type (

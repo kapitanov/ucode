@@ -7,8 +7,10 @@ import (
 	"github.com/pyk/byten"
 )
 
+const WriteFile Name = "write_file"
+
 func init() {
-	register("write_file", "write a file (existing file will be overwritten)", writeFileToolExecute)
+	register(WriteFile, "write a file (existing file will be overwritten)", writeFileToolExecute)
 }
 
 type (

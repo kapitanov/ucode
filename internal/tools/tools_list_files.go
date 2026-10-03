@@ -5,8 +5,10 @@ import (
 	"github.com/kapitanov/ucode/internal/iface"
 )
 
+const ListFiles Name = "list_files"
+
 func init() {
-	register("list_files", "list files in a directory", listFilesToolExecute)
+	register(ListFiles, "list files in a directory", listFilesToolExecute)
 }
 
 type (

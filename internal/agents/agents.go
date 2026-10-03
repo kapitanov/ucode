@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/kapitanov/ucode/internal/agents/compaction"
+	"github.com/kapitanov/ucode/internal/agents/definitions"
 	"github.com/kapitanov/ucode/internal/iface"
 	"github.com/kapitanov/ucode/internal/tools"
 	"github.com/kapitanov/ucode/internal/tui"
 	"github.com/revrost/go-openrouter"
-	"go.yaml.in/yaml/v3"
 )
 
 const (
@@ -23,88 +23,66 @@ const (
 )
 
 func New(llmConn iface.LLM, defaultModel string) iface.Agents {
-	var agentsConfig agentsConfigYAML
-	err := yaml.Unmarshal(agentsConfigYAMLBytes, &agentsConfig)
-	if err != nil {
-		panic(err)
+	a := &agentsImpl{
+		llmConn:      llmConn,
+		defaultModel: defaultModel,
+		defaultAgent: nil,
+		agents:       make(map[string]iface.Agent),
 	}
 
-	agents := make(map[string]iface.Agent)
-	for _, def := range agentsConfig.Roles {
-		prompt := def.Prompt + "\n\n" + agentsConfig.SharedPrompt
-		model := def.Model
-		if model == "" {
-			model = defaultModel
-			if model == "" {
-				model = agentsConfig.DefaultModel
-			}
-		}
+	a.defaultAgent = a.registerAgent(definitions.TeamLead)
+	a.registerAgent(definitions.Developer)
+	a.registerAgent(definitions.Tester)
+	a.registerAgent(definitions.DevOps)
+	a.registerAgent(definitions.Architect)
+	a.registerAgent(definitions.Security)
+	a.registerAgent(definitions.Documentation)
+	a.registerAgent(definitions.Researcher)
+	a.registerAgent(definitions.Reviewer)
 
-		agent := newAgentImpl(def.Name, def.Role, prompt, model, def.ForbiddenTools, llmConn)
-		agents[def.Name] = agent
-
-		var toolsList []string
-		for _, t := range agent.tools {
-			toolsList = append(toolsList, t.Function.Name)
-		}
-		tui.Printf("%% Agent %q (%s):", agent.name, def.Role)
-		tui.Printf("%%   Model = %s", model)
-		tui.Printf("%%   Tools = %s", strings.Join(toolsList, ", "))
-	}
-
-	defaultAgent := agents[agentsConfig.DefaultRole]
-	if defaultAgent == nil {
-		panic(fmt.Sprintf("default agent %q is not defined", agentsConfig.DefaultRole))
-	}
-
-	return &agentsImpl{
-		defaultAgent: defaultAgent,
-		agents:       agents,
-	}
+	return a
 }
 
-var (
-	//go:embed agents.yaml
-	agentsConfigYAMLBytes []byte
-)
+func (a *agentsImpl) registerAgent(def definitions.Agent) iface.Agent {
+	agent := newAgentImpl(def.Name, def.Prompt, a.defaultModel, def.Tools, a.llmConn)
+	a.agents[def.Name] = agent
 
-type agentsConfigYAML struct {
-	DefaultRole  string                     `yaml:"default_role"`
-	DefaultModel string                     `yaml:"default_model"`
-	SharedPrompt string                     `yaml:"shared_prompt"`
-	Roles        map[string]agentConfigYAML `yaml:"roles"`
-}
+	var toolsList []string
+	for _, t := range agent.tools {
+		toolsList = append(toolsList, t.Function.Name)
+	}
+	tui.Printf("%% Agent %q (%s):", agent.name, def.Role)
+	tui.Printf("%%   Model = %s", a.defaultModel)
+	tui.Printf("%%   Tools = %s", strings.Join(toolsList, ", "))
 
-type agentConfigYAML struct {
-	Name           string   `yaml:"name"`
-	Role           string   `yaml:"role"`
-	Prompt         string   `yaml:"prompt"`
-	Model          string   `yaml:"model"`
-	ForbiddenTools []string `yaml:"forbidden_tools"`
+	return agent
 }
 
 type agentsImpl struct {
+	llmConn      iface.LLM
+	defaultModel string
 	defaultAgent iface.Agent
 	agents       map[string]iface.Agent
 }
 
 func (a *agentsImpl) Default() iface.Agent           { return a.defaultAgent }
-func (a *agentsImpl) ByRole(role string) iface.Agent { return a.agents[role] }
+func (a *agentsImpl) Select(name string) iface.Agent { return a.agents[name] }
 
 type agentImpl struct {
-	name, role, prompt, model string
-	llm                       iface.LLM
-	tools                     []openrouter.Tool
+	name          string
+	prompt, model string
+	llm           iface.LLM
+	tools         []openrouter.Tool
 
 	request           openrouter.ChatCompletionRequest
 	maxMessages       int
 	compactedMessages int
 }
 
-func newAgentImpl(name, role, prompt, model string, forbiddenTools []string, llmConn iface.LLM) *agentImpl {
+func newAgentImpl(name, prompt, model string, allowedTools []tools.Name, llmConn iface.LLM) *agentImpl {
 	var ts []openrouter.Tool
 	for _, t := range tools.All() {
-		if slices.Contains(forbiddenTools, t.Name) {
+		if !slices.Contains(allowedTools, t.Name) {
 			continue
 		}
 
@@ -113,7 +91,6 @@ func newAgentImpl(name, role, prompt, model string, forbiddenTools []string, llm
 
 	return &agentImpl{
 		name:   name,
-		role:   role,
 		prompt: prompt,
 		model:  model,
 		llm:    llmConn,
@@ -229,7 +206,7 @@ func (a *agentImpl) executeTool(c iface.Context, toolCall openrouter.ToolCall) t
 		}
 	}
 
-	result := tools.Execute(c, toolCall.Function.Name, toolCall.Function.Arguments)
+	result := tools.Execute(c, tools.Name(toolCall.Function.Name), toolCall.Function.Arguments)
 	return result
 }
 

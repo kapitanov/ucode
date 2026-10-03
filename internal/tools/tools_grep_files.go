@@ -4,8 +4,10 @@ import (
 	"github.com/kapitanov/ucode/internal/iface"
 )
 
+const GrepFiles Name = "grep_files"
+
 func init() {
-	register("grep_files", "search files in a directory", grepFilesToolExecute)
+	register(GrepFiles, "search files in a directory", grepFilesToolExecute)
 }
 
 type (

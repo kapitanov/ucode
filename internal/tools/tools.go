@@ -12,8 +12,10 @@ import (
 	"github.com/revrost/go-openrouter/jsonschema"
 )
 
+type Name string
+
 type Tool struct {
-	Name       string
+	Name       Name
 	Definition openrouter.Tool
 	Execute    func(ctx iface.Context, args string) ToolResult
 }
@@ -31,18 +33,18 @@ func (r ToolResult) String() string {
 }
 
 var (
-	tools = make(map[string]*Tool)
+	tools = make(map[Name]*Tool)
 )
 
 func All() []*Tool {
 	all := slices.Collect(maps.Values(tools))
 	slices.SortFunc(all, func(a, b *Tool) int {
-		return strings.Compare(a.Name, b.Name)
+		return strings.Compare(string(a.Name), string(b.Name))
 	})
 	return all
 }
 
-func Execute(ctx iface.Context, toolName string, toolArgs string) ToolResult {
+func Execute(ctx iface.Context, toolName Name, toolArgs string) ToolResult {
 	tool, ok := tools[toolName]
 	if !ok {
 		return ToolResult{Error: fmt.Errorf("tool %q not found", toolName)}
@@ -52,7 +54,8 @@ func Execute(ctx iface.Context, toolName string, toolArgs string) ToolResult {
 }
 
 func register[T, R any](
-	name, description string,
+	name Name,
+	description string,
 	execute func(ctx iface.Context, args T) (R, error),
 ) {
 	schema, err := jsonschema.GenerateSchema[T]()
@@ -65,7 +68,7 @@ func register[T, R any](
 		Definition: openrouter.Tool{
 			Type: openrouter.ToolTypeFunction,
 			Function: &openrouter.FunctionDefinition{
-				Name:        name,
+				Name:        string(name),
 				Description: description,
 				Strict:      true,
 				Parameters:  schema,
