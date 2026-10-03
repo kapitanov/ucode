@@ -110,7 +110,7 @@ func configure() configuration {
 		cfg.ProviderModel = os.Getenv("OPENROUTER_MODEL")
 
 		if cfg.ProviderModel == "" {
-			cfg.ProviderModel = "default"
+			cfg.ProviderModel = DefaultModel
 		}
 	}
 

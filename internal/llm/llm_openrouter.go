@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kapitanov/ucode/internal/iface"
+	"github.com/kapitanov/ucode/internal/tui"
 	"github.com/revrost/go-openrouter"
 )
 
@@ -15,6 +16,10 @@ const maxRateLimitRetries = 3
 
 // fallbackRateLimitWait is used when X-RateLimit-Reset is absent or unparseable.
 const fallbackRateLimitWait = 60 * time.Second
+
+// emptyChoicesRetryWait is used before retrying a response that came back with no choices
+// (observed with some providers/free models on transient upstream hiccups).
+const emptyChoicesRetryWait = 3 * time.Second
 
 type OpenRouterClient struct {
 	client *openrouter.Client
@@ -54,6 +59,18 @@ func (c *OpenRouterClient) CreateChatCompletion(ctx context.Context, req openrou
 				continue
 			}
 			return nil, err
+		}
+
+		if len(resp.Choices) == 0 {
+			if attempt == maxRateLimitRetries-1 {
+				return nil, fmt.Errorf("api returned empty choices after %d retries", maxRateLimitRetries)
+			}
+
+			tui.Printf("%% API returned empty choices, retrying (attempt %d/%d)...", attempt+1, maxRateLimitRetries)
+			if sleepErr := sleepUntilReset(ctx, emptyChoicesRetryWait); sleepErr != nil {
+				return nil, sleepErr
+			}
+			continue
 		}
 
 		if resp.Usage != nil {
