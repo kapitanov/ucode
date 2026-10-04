@@ -1,9 +1,12 @@
 package sandbox
 
 import (
-	_ "embed"
+	"crypto/sha256"
+	"embed"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -202,6 +205,8 @@ func (s *isolatedSandbox) ShellCommand(command string) (output string, exitCode 
 	return
 }
 
+func (*isolatedSandbox) Close() {}
+
 func (*isolatedSandbox) validateDependencies() {
 	if _, err := exec.LookPath("docker"); err != nil {
 		panic("docker is not installed or not in PATH")
@@ -209,29 +214,12 @@ func (*isolatedSandbox) validateDependencies() {
 }
 
 func (s *isolatedSandbox) buildContainer() {
-	tui.Printf("%% Buiding sandbox docker container:")
-
-	dockerfile, err := os.CreateTemp("", "")
+	containerImage, err := buildContainer()
 	if err != nil {
-		panic(fmt.Errorf("failed to create temporary Dockerfile: %v", err))
-	}
-	_, err = dockerfile.Write(dockerfileContent)
-	if err != nil {
-		panic(fmt.Errorf("failed to write to temporary Dockerfile: %v", err))
-	}
-	_ = dockerfile.Close()
-
-	tui.Printf("%% docker build -q -f %s . …", dockerfile.Name())
-	cmd := exec.Command("docker", "build", "-q", "-f", dockerfile.Name(), ".")
-
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		panic(fmt.Errorf("failed to build Docker image: %v\nOutput: %s", err, output))
+		panic(err)
 	}
 
-	s.containerImage = strings.TrimSpace(string(output))
-
-	tui.Printf("%% → %q\n", s.containerImage)
+	s.containerImage = containerImage
 }
 
 func (s *isolatedSandbox) exec(command string) ([]byte, int, error) {
@@ -265,7 +253,112 @@ func (s *isolatedSandbox) mustExec(command string) ([]byte, error) {
 	return output, nil
 }
 
+const containerFSRoot = "containerfs"
+
 var (
-	//go:embed Dockerfile
-	dockerfileContent []byte
+	//go:embed containerfs/**
+	containerFS embed.FS
 )
+
+func buildContainer() (string, error) {
+	tui.Printf("%% Buiding sandbox docker container:")
+
+	hash, err := containerFSHash()
+	if err != nil {
+		return "", fmt.Errorf("failed to hash sandbox container filesystem: %v", err)
+	}
+
+	containerImage := fmt.Sprintf("ucode/sandbox:%s", hash[:8])
+	if imageExists(containerImage) {
+		tui.Printf("%% → %q (cached)\n", containerImage)
+		return containerImage, nil
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("failed to get current working directory: %v", err)
+	}
+
+	buildContextDir := filepath.Join(wd, ".agents", "sandbox", "containerfs")
+	if err = os.RemoveAll(buildContextDir); err != nil {
+		return "", fmt.Errorf("failed to clean build context directory %q: %v", buildContextDir, err)
+	}
+	if err = os.MkdirAll(buildContextDir, 0755); err != nil {
+		return "", fmt.Errorf("failed to create build context directory %q: %v", buildContextDir, err)
+	}
+
+	if err = copyContainerFS(buildContextDir); err != nil {
+		return "", fmt.Errorf("failed to prepare build context %q: %v", buildContextDir, err)
+	}
+
+	tui.Printf("%% docker buildx build --load -t %s %s", containerImage, buildContextDir)
+	cmd := exec.Command("docker", "buildx", "build", "--load", "-t", containerImage, buildContextDir)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err = cmd.Run(); err != nil {
+		return "", fmt.Errorf("failed to build docker image: %v", err)
+	}
+
+	tui.Printf("%% → %q\n", containerImage)
+	return containerImage, nil
+}
+
+// copyContainerFS copies the embedded container build context (containerFS, rooted at
+// containerFSRoot) onto disk at destDir, since `docker buildx build` needs a real directory.
+func copyContainerFS(destDir string) error {
+	return fs.WalkDir(containerFS, containerFSRoot, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		relPath := strings.TrimPrefix(strings.TrimPrefix(path, containerFSRoot), "/")
+		destPath := filepath.Join(destDir, relPath)
+
+		if d.IsDir() {
+			return os.MkdirAll(destPath, 0755)
+		}
+
+		data, err := containerFS.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		return os.WriteFile(destPath, data, 0644)
+	})
+}
+
+// containerFSHash hashes the embedded container build context's paths and contents, so the
+// resulting digest changes whenever the Dockerfile or any other build input changes.
+func containerFSHash() (string, error) {
+	h := sha256.New()
+	err := fs.WalkDir(containerFS, containerFSRoot, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+
+		data, err := containerFS.ReadFile(path)
+		if err != nil {
+			return err
+		}
+
+		_, _ = fmt.Fprint(h, path)
+		h.Write(data)
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
+}
+
+// imageExists reports whether a docker image with the given tag already exists locally,
+// so we can skip rebuilding the sandbox container when nothing has changed.
+func imageExists(tag string) bool {
+	cmd := exec.Command("docker", "image", "inspect", tag)
+	return cmd.Run() == nil
+}

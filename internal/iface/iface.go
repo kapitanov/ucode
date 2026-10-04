@@ -137,4 +137,6 @@ type Sandbox interface {
 	PatchFile(path, diff string) (bs []byte, err error)
 	RemoveFile(path string) (err error)
 	ShellCommand(command string) (output string, exitCode int, err error)
+
+	Close()
 }

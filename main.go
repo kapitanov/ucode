@@ -28,6 +28,8 @@ func main() {
 	defer agentsUI.Close()
 
 	agentsSandbox := configureSandbox(agentsUI, cfg.EnableSandbox)
+	defer agentsSandbox.Close()
+
 	agentsRegistry := agents.New(llmConn, cfg.ProviderModel)
 
 	err := runner.RunAgent(agentsSandbox, agentsRegistry, agentsUI, agentsRegistry.Default())

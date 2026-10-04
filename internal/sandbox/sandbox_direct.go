@@ -233,6 +233,8 @@ func (s *directSandbox) ShellCommand(command string) (output string, exitCode in
 	return
 }
 
+func (*directSandbox) Close() {}
+
 func (*directSandbox) validateDependencies() {
 	if _, err := exec.LookPath("rg"); err != nil {
 		panic("ripgrep (rg) is not installed or not in PATH")
