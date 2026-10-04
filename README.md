@@ -64,6 +64,7 @@ export OPENROUTER_API_KEY="your_api_key_here"
 | `--url`   | OpenRouter API base URL | `$OPENROUTER_URL` or required     |
 | `--key`   | OpenRouter API key      | `$OPENROUTER_API_KEY` or required |
 | `--model` | OpenRouter API model    | `$OPENROUTER_MODEL` or optional   |
+| `--modern-ui` | Включить современный интерфейс с горячими клавишами | по умолчанию выключен |
 
 **Note:** Both `--url` and `--key` can be provided via CLI flags or environment variables.
 If not provided via flags, the tool will attempt to use environment variables.
@@ -88,6 +89,20 @@ When running ucode, you can use the following commands:
 - **`/plan`** - View the current task plan
 - **`/memory`** - View stored memory entries
 - **`/usage`** - View token usage and cost
+
+### Hotkeys (Modern UI)
+
+When running with the `--modern-ui` flag, the following hotkeys are available:
+
+- **Enter** — Отправить текущий ввод
+- **Tab** — Переключение панелей
+- **Ctrl+C** — Выйти из приложения
+- **Alt+Enter** — Новая строка в вводе
+- **Стрелки (↑/↓/←/→)** — Навигация
+- **Home / End** — Перейти в начало / конец строки
+- **Ctrl+U** — Очистить ввод
+- **Ctrl+D** — Выйти из приложения на пустом поле
+- **PgUp / PgDn** — Прокрутка чата
 
 ## Available Tools
 

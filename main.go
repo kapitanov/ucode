@@ -10,6 +10,7 @@ import (
 	"github.com/kapitanov/ucode/internal/runner"
 	"github.com/kapitanov/ucode/internal/sandbox"
 	"github.com/kapitanov/ucode/internal/tui"
+	"github.com/kapitanov/ucode/internal/tui2"
 )
 
 const DefaultModel = "openrouter/free"
@@ -71,8 +72,9 @@ func configureLLM(providerURL, providerAPIKey, providerModel string) iface.LLM {
 }
 
 func configureUI(llm iface.LLM, printReasoning, useModernUI bool) iface.UI {
-	// TODO here we can add a flag to choose between plain TUI and pretty TUI, for now we will use plain TUI
-	_ = useModernUI
+	if useModernUI {
+		return tui2.New(llm, printReasoning)
+	}
 
 	return tui.New(llm, printReasoning)
 }
@@ -98,7 +100,7 @@ func configure() configuration {
 	flag.StringVar(&cfg.ProviderModel, "model", "", "llm provider model (defaults to $OPENROUTER_MODEL)")
 	flag.BoolVar(&cfg.EnableSandbox, "sandbox", false, "enable sandbox mode")
 	flag.BoolVar(&cfg.PrintReasoning, "reasoning", false, "enable reasoning output")
-	flag.BoolVar(&cfg.UseModernUI, "modern-ui", false, "use modern UI (not implemented yet)")
+	flag.BoolVar(&cfg.UseModernUI, "modern-ui", false, "use modern full-screen UI")
 
 	flag.Parse()
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/briandowns/spinner"
@@ -40,8 +41,24 @@ var (
 	errorStyle            = color.New(color.FgRed).SprintFunc()
 )
 
+var printfHandler atomic.Pointer[func(string)]
+
+// SetPrintfHandler перенаправляет вывод Printf; nil возвращает вывод в stdout.
+func SetPrintfHandler(h func(msg string)) {
+	if h == nil {
+		printfHandler.Store(nil)
+		return
+	}
+	printfHandler.Store(&h)
+}
+
 func Printf(format string, a ...any) {
-	_, _ = fmt.Fprintf(color.Output, "%s\n", printStyle(fmt.Sprintf(format, a...)))
+	msg := fmt.Sprintf(format, a...)
+	if h := printfHandler.Load(); h != nil {
+		(*h)(msg)
+		return
+	}
+	_, _ = fmt.Fprintf(color.Output, "%s\n", printStyle(msg))
 }
 
 type UI struct {

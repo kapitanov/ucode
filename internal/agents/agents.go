@@ -3,6 +3,7 @@ package agents
 import (
 	"context"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -170,7 +171,7 @@ func (a *agentImpl) runOne(c iface.Context) error {
 	}
 
 	msg := response.Choices[0].Message
-	a.request.Messages = append(a.request.Messages, msg)
+	a.request.Messages = append(a.request.Messages, sanitizedForHistory(msg))
 
 	if msg.Reasoning != nil {
 		text := *msg.Reasoning
@@ -208,6 +209,37 @@ func (a *agentImpl) runOne(c iface.Context) error {
 	}
 
 	return errDone
+}
+
+// sanitizedForHistory returns a copy of msg safe to store in conversation history. If the
+// model produced a tool call whose arguments aren't valid JSON (e.g. the response got cut off
+// mid-generation by a flaky provider), sending that message back verbatim on a later request
+// makes the provider reject the *entire* request with a 400 - which isn't retryable and would
+// otherwise panic the whole run every time from then on. Substituting a valid empty object for
+// just the stored copy keeps that unaffected: the caller still executes the tool call against
+// the original, untouched msg, so the model still gets a proper "invalid arguments" error back.
+func sanitizedForHistory(msg openrouter.ChatCompletionMessage) openrouter.ChatCompletionMessage {
+	needsFix := false
+	for _, tc := range msg.ToolCalls {
+		if !json.Valid([]byte(tc.Function.Arguments)) {
+			needsFix = true
+			break
+		}
+	}
+	if !needsFix {
+		return msg
+	}
+
+	sanitized := make([]openrouter.ToolCall, len(msg.ToolCalls))
+	copy(sanitized, msg.ToolCalls)
+	for i := range sanitized {
+		if !json.Valid([]byte(sanitized[i].Function.Arguments)) {
+			sanitized[i].Function.Arguments = "{}"
+		}
+	}
+
+	msg.ToolCalls = sanitized
+	return msg
 }
 
 func (a *agentImpl) executeTool(c iface.Context, toolCall openrouter.ToolCall) tools.ToolResult {
