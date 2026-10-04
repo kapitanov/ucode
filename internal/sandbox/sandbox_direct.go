@@ -214,8 +214,10 @@ func (s *directSandbox) RemoveFile(path string) (err error) {
 	return nil
 }
 
-func (s *directSandbox) ShellCommand(command string) (output string, exitCode int, err error) {
-	cmd := exec.Command("sh", "-c", command)
+func (s *directSandbox) ShellCommand(command []string) (output string, exitCode int, err error) {
+	args := []string{"-c"}
+	args = append(args, command...)
+	cmd := exec.Command("sh", args...)
 	var rawOutput []byte
 	rawOutput, err = cmd.CombinedOutput()
 	output = string(rawOutput)

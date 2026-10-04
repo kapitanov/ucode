@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"embed"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -17,6 +16,17 @@ import (
 	"github.com/kapitanov/ucode/internal/sandbox/guardrails"
 	"github.com/kapitanov/ucode/internal/tui"
 )
+
+// The isolated sandbox runs a single long-lived container per process and talks to it over a
+// newline-delimited JSON protocol on its stdin/stdout, rather than spawning a fresh `docker run`
+// for every file operation. The container's side of the protocol is implemented by the small Go
+// program in ./containerfs/main.go (built into the image by ./containerfs/Dockerfile); see
+// sandbox_isolated_container.go for the matching request/response types and the code that
+// manages the container's lifecycle.
+//
+// Resilience: a failed call is retried (with a limit) by restarting the container - see
+// containerAgent.call. Containers are labeled with their owning process's PID; on startup any
+// container whose owning process is no longer alive is treated as orphaned and removed.
 
 func Isolated() iface.Sandbox {
 	wd, err := os.Getwd()
@@ -34,18 +44,20 @@ func Isolated() iface.Sandbox {
 
 	tui.Printf("%% Running in isolated mode. Working directory: %q", wd)
 
-	s := &isolatedSandbox{
-		wd: wd,
-	}
-	s.validateDependencies()
-	s.buildContainer()
+	validateDockerDependency()
 
-	return s
+	containerImage, err := buildContainer()
+	if err != nil {
+		panic(err)
+	}
+
+	return &isolatedSandbox{
+		agent: newContainerAgent(wd, containerImage),
+	}
 }
 
 type isolatedSandbox struct {
-	wd             string
-	containerImage string
+	agent *containerAgent
 }
 
 func (*isolatedSandbox) RequireManualValidation() bool { return false }
@@ -55,9 +67,17 @@ func (s *isolatedSandbox) ReadFile(path string) ([]byte, error) {
 		return nil, fmt.Errorf("access to path %q is not allowed", path)
 	}
 
-	bs, err := s.mustExecf("cat %q", path)
+	resp, err := s.agent.call(containerRequest{ReadFile: &readFileRequest{Path: path}})
 	if err != nil {
-		return nil, fmt.Errorf("failed to read file %q: %v", path, err)
+		return nil, fmt.Errorf("failed to read file %q: %w", path, err)
+	}
+	if resp.Error != "" {
+		return nil, fmt.Errorf("failed to read file %q: %s", path, resp.Error)
+	}
+
+	bs, err := base64Decode(resp.Content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode contents of %q: %w", path, err)
 	}
 
 	return bs, nil
@@ -68,40 +88,25 @@ func (s *isolatedSandbox) ListFiles(dir string) (dirs []string, files []string, 
 		return nil, nil, fmt.Errorf("access to path %q is not allowed", dir)
 	}
 
-	dirs, err = s.listFilesHelper(dir, "d")
+	resp, err := s.agent.call(containerRequest{ListFiles: &listFilesRequest{Dir: dir}})
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to list files in %q: %w", dir, err)
+	}
+	if resp.Error != "" {
+		return nil, nil, fmt.Errorf("failed to list files in %q: %s", dir, resp.Error)
 	}
 
-	files, err = s.listFilesHelper(dir, "f")
-	if err != nil {
-		return nil, nil, err
-	}
-
-	return
+	return filterAllowedPaths(resp.Dirs), filterAllowedPaths(resp.Files), nil
 }
 
-func (s *isolatedSandbox) listFilesHelper(dir, typeFilter string) ([]string, error) {
-	// find . -maxdepth 1 -not -name '.' -type f | xargs realpath | sort
-	// find . -maxdepth 1 -not -name '.' -type d | xargs realpath | sort
-	rawOutput, err := s.mustExecf("find %q -maxdepth 1 -not -name '.' -type %s | xargs realpath | sort", dir, typeFilter)
-	if err != nil {
-		return nil, err
-	}
-
-	var entries []string
-	for _, line := range strings.Split(string(rawOutput), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
+func filterAllowedPaths(paths []string) []string {
+	var allowed []string
+	for _, p := range paths {
+		if guardrails.IsAllowedPath(p) {
+			allowed = append(allowed, p)
 		}
-		if !guardrails.IsAllowedPath(line) {
-			continue
-		}
-		entries = append(entries, line)
 	}
-
-	return entries, nil
+	return allowed
 }
 
 func (s *isolatedSandbox) SearchFiles(pattern string, path, fileType *string, caseSensitive *bool) (results []string, err error) {
@@ -114,42 +119,23 @@ func (s *isolatedSandbox) SearchFiles(pattern string, path, fileType *string, ca
 		return nil, fmt.Errorf("access to path %q is not allowed", effectivePath)
 	}
 
-	// Build ripgrep command
-	command := "rg --line-number --with-filename --color=never"
-
-	// Add case sensitivity flag
-	if caseSensitive == nil || !*caseSensitive {
-		command += " --ignore-case"
+	req := searchFilesRequest{Path: effectivePath, Pattern: pattern, IgnoreCase: true}
+	if fileType != nil {
+		req.Type = *fileType
+	}
+	if caseSensitive != nil {
+		req.IgnoreCase = !*caseSensitive
 	}
 
-	// Add file type filter if specified
-	if fileType != nil && *fileType != "" {
-		command += " --type "
-		command += *fileType
-	}
-
-	command += fmt.Sprintf(" %q %q", pattern, effectivePath)
-
-	output, exitCode, err := s.exec(command)
+	resp, err := s.agent.call(containerRequest{SearchFiles: &req})
 	if err != nil {
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
-
-	// ripgrep returns exit code 1 when no matches are found, which is not an error
-	if exitCode == 1 {
-		return nil, nil
-	}
-	if exitCode != 0 {
-		return nil, fmt.Errorf("search failed with exit code %d:\n%s", exitCode, output)
+	if resp.Error != "" {
+		return nil, fmt.Errorf("search failed: %s", resp.Error)
 	}
 
-	outputStr := strings.TrimSpace(string(output))
-	if outputStr == "" {
-		return nil, nil
-	}
-
-	results = strings.Split(outputStr, "\n")
-	return
+	return resp.Results, nil
 }
 
 func (s *isolatedSandbox) WriteFile(path string, bs []byte) (err error) {
@@ -157,10 +143,12 @@ func (s *isolatedSandbox) WriteFile(path string, bs []byte) (err error) {
 		return fmt.Errorf("access to path %q is not allowed", path)
 	}
 
-	dir := filepath.Dir(path)
-	_, err = s.mustExecf("mkdir -p %q && cat > %q <<EOF\n%s\nEOF", dir, path, string(bs))
+	resp, err := s.agent.call(containerRequest{WriteFile: &writeFileRequest{Path: path, Content: base64Encode(bs)}})
 	if err != nil {
-		return fmt.Errorf("failed to write file %q: %v", path, err)
+		return fmt.Errorf("failed to write file %q: %w", path, err)
+	}
+	if resp.Error != "" {
+		return fmt.Errorf("failed to write file %q: %s", path, resp.Error)
 	}
 
 	return nil
@@ -171,18 +159,20 @@ func (s *isolatedSandbox) PatchFile(path, diff string) (bs []byte, err error) {
 		return nil, fmt.Errorf("access to path %q is not allowed", path)
 	}
 
-	original, err := s.mustExecf("cat %q || true", path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read file %q: %v", path, err)
-	}
+	// Tolerate a missing file, same as the shell's `cat path || true` would: a diff is
+	// allowed to create a brand new file.
+	original, _ := s.ReadFile(path)
 
 	patched, err := difftool.Apply(string(original), diff)
 	if err != nil {
 		return nil, fmt.Errorf("failed to apply diff to %q: %v", path, err)
 	}
 
-	err = s.WriteFile(path, []byte(patched))
-	return []byte(patched), err
+	if err = s.WriteFile(path, []byte(patched)); err != nil {
+		return nil, err
+	}
+
+	return []byte(patched), nil
 }
 
 func (s *isolatedSandbox) RemoveFile(path string) (err error) {
@@ -190,67 +180,43 @@ func (s *isolatedSandbox) RemoveFile(path string) (err error) {
 		return fmt.Errorf("access to path %q is not allowed", path)
 	}
 
-	_, err = s.mustExecf("rm -rf %q", path)
+	resp, err := s.agent.call(containerRequest{RemoveFile: &removeFileRequest{Path: path}})
 	if err != nil {
-		return fmt.Errorf("failed to remove file %q: %v", path, err)
+		return fmt.Errorf("failed to remove file %q: %w", path, err)
+	}
+	if resp.Error != "" {
+		return fmt.Errorf("failed to remove file %q: %s", path, resp.Error)
 	}
 
 	return nil
 }
 
-func (s *isolatedSandbox) ShellCommand(command string) (output string, exitCode int, err error) {
-	var rawOutput []byte
-	rawOutput, exitCode, err = s.exec(command)
-	output = string(rawOutput)
-	return
+func (s *isolatedSandbox) ShellCommand(command []string) (output string, exitCode int, err error) {
+	resp, err := s.agent.call(containerRequest{Shell: &shellRequest{Command: command}})
+	if err != nil {
+		return "", 0, err
+	}
+	if resp.Error != "" {
+		return "", 0, fmt.Errorf("%s", resp.Error)
+	}
+
+	bs, err := base64Decode(resp.Content)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to decode command output: %w", err)
+	}
+
+	return string(bs), resp.ExitCode, nil
 }
 
-func (*isolatedSandbox) Close() {}
+// Close shuts down this sandbox's container, if one is running.
+func (s *isolatedSandbox) Close() {
+	s.agent.Close()
+}
 
-func (*isolatedSandbox) validateDependencies() {
+func validateDockerDependency() {
 	if _, err := exec.LookPath("docker"); err != nil {
 		panic("docker is not installed or not in PATH")
 	}
-}
-
-func (s *isolatedSandbox) buildContainer() {
-	containerImage, err := buildContainer()
-	if err != nil {
-		panic(err)
-	}
-
-	s.containerImage = containerImage
-}
-
-func (s *isolatedSandbox) exec(command string) ([]byte, int, error) {
-	cmd := exec.Command("docker", "run", "-t", "--rm", "-v", fmt.Sprintf("%s:/mnt", s.wd), "-w", "/mnt", s.containerImage, "bash", "-c", command)
-
-	// tui.Printf("%% docker run -t --rm -v %s:/mnt -w /mnt %s bash -c %q\n", s.wd, s.containerImage, command)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
-			return output, exitErr.ExitCode(), nil
-		}
-		return nil, 0, fmt.Errorf("failed to execute command: %v\nOutput: %s", err, output)
-	}
-
-	return output, 0, nil
-}
-
-func (s *isolatedSandbox) mustExecf(format string, args ...any) ([]byte, error) {
-	return s.mustExec(fmt.Sprintf(format, args...))
-}
-
-func (s *isolatedSandbox) mustExec(command string) ([]byte, error) {
-	cmd := exec.Command("docker", "run", "-t", "--rm", "-v", fmt.Sprintf("%s:/mnt", s.wd), "-w", "/mnt", s.containerImage, "sh", "-c", command)
-
-	// tui.Printf("%% docker run -t --rm -v %s:/mnt -w /mnt %s bash -c %q\n", s.wd, s.containerImage, command)
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute command: %v\nOutput: %s", err, output)
-	}
-
-	return output, nil
 }
 
 const containerFSRoot = "containerfs"
@@ -329,7 +295,8 @@ func copyContainerFS(destDir string) error {
 }
 
 // containerFSHash hashes the embedded container build context's paths and contents, so the
-// resulting digest changes whenever the Dockerfile or any other build input changes.
+// resulting digest changes whenever the Dockerfile, the sandbox agent's source, or any other
+// build input changes.
 func containerFSHash() (string, error) {
 	h := sha256.New()
 	err := fs.WalkDir(containerFS, containerFSRoot, func(path string, d fs.DirEntry, err error) error {

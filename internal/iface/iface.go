@@ -136,7 +136,7 @@ type Sandbox interface {
 	WriteFile(path string, bs []byte) (err error)
 	PatchFile(path, diff string) (bs []byte, err error)
 	RemoveFile(path string) (err error)
-	ShellCommand(command string) (output string, exitCode int, err error)
+	ShellCommand(command []string) (output string, exitCode int, err error)
 
 	Close()
 }

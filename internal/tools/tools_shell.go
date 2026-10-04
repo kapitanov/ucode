@@ -15,7 +15,7 @@ func init() {
 
 type (
 	shellToolArgs struct {
-		Command string `json:"command" jsonschema_description:"shell command to execute"`
+		Command []string `json:"command" jsonschema_description:"shell command to execute, split into parts"`
 	}
 
 	shellToolResult struct {
@@ -27,7 +27,12 @@ type (
 func shellToolExecute(ctx iface.Context, args shellToolArgs) (shellToolResult, error) {
 	toolCall := shellToolDescribe(args)
 
-	if !shellToolIsAllowedCommand(ctx, args.Command) {
+	if len(args.Command) < 1 {
+		ctx.ToolCall(toolCall).Failure("shell command is malformed")
+		return shellToolResult{}, fmt.Errorf("shell command is malformed")
+	}
+
+	if !shellToolIsAllowedCommand(ctx, args.Command[0]) {
 		ctx.ToolCall(toolCall).Failure("shell command execution not allowed")
 		return shellToolResult{}, fmt.Errorf("shell command execution not allowed")
 	}
@@ -60,7 +65,7 @@ func shellToolIsAllowedCommand(ctx iface.Context, command string) bool {
 func shellToolDescribe(args shellToolArgs) iface.ToolCall {
 	return iface.ToolCall{
 		Type: "SHELL",
-		Args: args.Command,
+		Args: strings.Join(args.Command, " "),
 	}
 }
 
